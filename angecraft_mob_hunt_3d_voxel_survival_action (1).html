@@ -1,0 +1,2431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AngeCraft: Mob Hunt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0f19;
+            font-family: 'Inter', sans-serif;
+        }
+        canvas#game-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Authentic Minecraft Beveled UI */
+        .mc-panel {
+            background: rgba(16, 20, 30, 0.90);
+            border: 3px solid #090c12;
+            box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.16), inset -2px -2px 0 rgba(0, 0, 0, 0.6), 0 20px 50px rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+        }
+        .mc-btn {
+            background: #4b5563;
+            border: 2px solid #111827;
+            box-shadow: inset 2px 2px 0 #9ca3af, inset -2px -3px 0 #1f2937;
+            color: #ffffff;
+            text-shadow: 2px 2px 0 #111827;
+            transition: filter 0.1s ease, transform 0.06s ease;
+        }
+        .mc-btn:hover {
+            background: #2563eb;
+            box-shadow: inset 2px 2px 0 #93c5fd, inset -2px -3px 0 #1e3a8a;
+        }
+        .mc-btn:active {
+            transform: translateY(1px);
+        }
+        .mc-btn-green {
+            background: #16a34a;
+            box-shadow: inset 2px 2px 0 #4ade80, inset -2px -3px 0 #14532d;
+            text-shadow: 2px 2px 0 #052e16;
+        }
+        .mc-btn-green:hover {
+            background: #22c55e;
+            box-shadow: inset 2px 2px 0 #86efac, inset -2px -3px 0 #166534;
+        }
+
+        .mc-slot {
+            width: 58px;
+            height: 58px;
+            background: rgba(15, 23, 42, 0.88);
+            border: 2px solid #1e293b;
+            box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.7), inset -2px -2px 0 rgba(255, 255, 255, 0.12);
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.08s ease, border-color 0.08s ease;
+        }
+        .mc-slot:hover {
+            border-color: #94a3b8;
+            background: rgba(30, 41, 59, 0.95);
+        }
+        .mc-slot.active {
+            border: 3px solid #facc15;
+            box-shadow: inset 0 0 12px rgba(250, 204, 21, 0.35), 0 0 16px rgba(250, 204, 21, 0.5);
+            transform: translateY(-4px) scale(1.06);
+            z-index: 10;
+        }
+        .pixel-art {
+            image-rendering: pixelated;
+            shape-rendering: crispEdges;
+        }
+        @keyframes dmgFloat {
+            0% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, -44px) scale(0.95); }
+        }
+        .dmg-popup {
+            position: fixed;
+            pointer-events: none;
+            z-index: 25;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 900;
+            text-shadow: 2px 2px 0 #090c12, -1px -1px 0 #090c12;
+            animation: dmgFloat 0.75s ease-out forwards;
+        }
+
+        /* Crisp Crosshair + Reload Bar */
+        #crosshair-wrap {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 22;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #crosshair {
+            width: 18px;
+            height: 18px;
+            position: relative;
+            mix-blend-mode: difference;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #ffffff;
+        }
+        #crosshair::before { top: 8px; left: 0; width: 18px; height: 2px; }
+        #crosshair::after { left: 8px; top: 0; width: 2px; height: 18px; }
+
+        /* Screen Flash Overlays */
+        #damage-flash {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle, transparent 45%, rgba(220, 38, 38, 0.65) 100%);
+            pointer-events: none;
+            z-index: 18;
+            opacity: 0;
+            transition: opacity 0.15s ease-out;
+        }
+        #heal-flash {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle, transparent 50%, rgba(250, 204, 21, 0.38) 100%);
+            pointer-events: none;
+            z-index: 18;
+            opacity: 0;
+            transition: opacity 0.25s ease-out;
+        }
+
+        .tier-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 2px solid #334155;
+            transition: all 0.12s ease;
+        }
+        .tier-card.selected {
+            border-color: #facc15;
+            background: rgba(250, 204, 21, 0.14);
+            box-shadow: 0 0 18px rgba(250, 204, 21, 0.25);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+    <div id="damage-flash"></div>
+    <div id="heal-flash"></div>
+    <div id="world-popups" class="fixed inset-0 pointer-events-none z-25"></div>
+
+    <!-- Crosshair & Crossbow Reload Indicator -->
+    <div id="crosshair-wrap" class="hidden">
+        <div id="crosshair"></div>
+        <div id="reload-bar-bg" class="hidden w-12 h-1.5 bg-slate-950/90 border border-slate-600 mt-2 overflow-hidden">
+            <div id="reload-bar-fill" class="h-full bg-amber-400" style="width: 100%;"></div>
+        </div>
+    </div>
+
+    <!-- Center Event Toast -->
+    <div id="event-toast" class="fixed top-28 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 bg-slate-950/90 border-2 border-amber-400 text-amber-300 text-xs sm:text-sm font-extrabold tracking-wide shadow-2xl opacity-0 pointer-events-none transition-opacity duration-200">
+        CRITICAL HIT!
+    </div>
+
+    <!-- In-Game Survival Minigame HUD -->
+    <div id="hud" class="hidden fixed inset-0 pointer-events-none z-20 flex flex-col justify-between p-3 sm:p-4">
+        
+        <!-- Top Row: Hunt Quota & Combo | Compass Radar & Boss Bar | Sunset Clock -->
+        <div class="flex flex-wrap items-start justify-between gap-2">
+            
+            <!-- Left: Mob Quota & Combo Multiplier -->
+            <div class="mc-panel px-3.5 py-2 text-white min-w-[235px]">
+                <div class="flex items-center justify-between border-b border-slate-700 pb-1 mb-1.5">
+                    <span class="text-xs font-black tracking-wider text-emerald-400 uppercase">ANGECRAFT: MOB HUNT</span>
+                    <span id="hud-tier-badge" class="text-[10px] font-bold text-amber-300 uppercase">HUNTER</span>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">Mobs Hunted</div>
+                        <div class="mono text-2xl font-black text-white leading-none">
+                            <span id="hud-kills" class="text-emerald-400">0</span><span class="text-slate-500 text-lg">/</span><span id="hud-quota">15</span>
+                        </div>
+                    </div>
+                    <div class="text-center border-x border-slate-700 px-3">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">Combo</div>
+                        <div id="hud-combo" class="mono text-xl font-black text-amber-300 leading-none">1x</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">Score</div>
+                        <div id="hud-score" class="mono text-xl font-black text-sky-300 leading-none">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center: Mob Radar Compass + Dread Brute Boss Health Bar -->
+            <div class="flex flex-col items-center gap-1.5 min-w-[290px] sm:min-w-[380px]">
+                <div class="mc-panel px-3.5 py-1.5 text-white w-full">
+                    <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        <span>W</span>
+                        <span class="text-amber-300 font-extrabold">Hostile Mob Radar (Red = Mob | Skull = Boss)</span>
+                        <span>E</span>
+                    </div>
+                    <div id="compass-bar" class="relative w-full h-5 bg-slate-950 border border-slate-700 overflow-hidden flex items-center justify-center">
+                        <div class="w-0.5 h-full bg-white/30"></div>
+                    </div>
+                </div>
+
+                <!-- Boss Health Bar (Revealed when Dread Brute spawns) -->
+                <div id="boss-bar-wrap" class="hidden mc-panel px-3.5 py-1.5 text-white w-full border-rose-500">
+                    <div class="flex items-center justify-between text-xs font-black tracking-wider uppercase text-rose-400 mb-1">
+                        <span>💀 DREAD BRUTE (SUNSET BOSS)</span>
+                        <span id="boss-hp-text" class="mono text-white">120 / 120</span>
+                    </div>
+                    <div class="w-full h-3 bg-slate-950 border border-rose-900 overflow-hidden">
+                        <div id="boss-hp-fill" class="h-full bg-gradient-to-r from-rose-700 via-red-500 to-amber-400 transition-all duration-150" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Sunset Countdown Clock -->
+            <div class="mc-panel px-3.5 py-2 text-white text-right min-w-[165px]">
+                <div id="hud-day-phase" class="text-[10px] uppercase tracking-wider text-amber-300 font-extrabold">☀️ High Noon</div>
+                <div id="hud-timer" class="mono text-2xl font-black text-white leading-tight">02:30</div>
+                <div id="hud-best" class="mono text-[10px] text-slate-400">Best Score: 0</div>
+            </div>
+        </div>
+
+        <!-- Bottom Center: Minecraft Hearts, Dash/Shield Status, Stamina & 5-Slot Hotbar -->
+        <div class="flex flex-col items-center space-y-1.5 pb-1">
+            
+            <!-- Hearts + Shield/Dash Status + Stamina Drumsticks -->
+            <div class="flex items-center justify-between w-full max-w-[345px] px-1">
+                <div id="hud-hearts" class="flex items-center gap-0.5 text-sm drop-shadow" title="Health (10 Hearts)">
+                    ❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️
+                </div>
+                <div id="hud-stamina-icons" class="flex items-center gap-0.5 text-sm drop-shadow" title="Sprint & Dodge Stamina">
+                    🍗🍗🍗🍗🍗
+                </div>
+            </div>
+
+            <!-- Minecraft Green XP Level Bar -->
+            <div class="relative w-full max-w-[332px] h-2.5 bg-slate-950 border border-slate-700 overflow-visible">
+                <div id="xp-bar-fill" class="h-full bg-gradient-to-r from-lime-500 to-emerald-400 transition-all duration-150" style="width: 0%;"></div>
+                <span id="xp-level-text" class="mono absolute -top-3.5 left-1/2 -translate-x-1/2 text-xs font-black text-lime-300 drop-shadow-[0_2px_2px_rgba(0,0,0,0.95)]">LVL 1</span>
+            </div>
+
+            <!-- Active Item & Offhand Hint -->
+            <div class="flex items-center gap-2">
+                <div id="hud-item-name" class="px-2.5 py-0.5 bg-slate-950/80 border border-slate-700 text-white text-xs font-bold tracking-wide">
+                    Diamond Broadsword (LMB Slash • Jump+Hit = Crit!)
+                </div>
+                <div id="hud-shield-status" class="px-2 py-0.5 bg-slate-950/80 border border-sky-500/40 text-sky-300 text-[11px] font-extrabold">
+                    🛡️ [RMB] Shield • [Tab] Click Slots
+                </div>
+            </div>
+
+            <!-- 5-Slot Clickable Minecraft Hotbar (Pixel-Art SVG Icons) -->
+            <div class="pointer-events-auto flex items-center gap-1.5 p-1.5 bg-slate-950/85 border-2 border-slate-700">
+                <!-- Slot 1: Diamond Broadsword -->
+                <button type="button" id="slot-1" onclick="selectHotbarSlot(1)" class="mc-slot active flex flex-col items-center justify-center" title="Slot 1: Diamond Broadsword">
+                    <span class="absolute top-0.5 left-1 mono text-[10px] font-bold text-slate-400">1</span>
+                    <svg viewBox="0 0 16 16" class="w-9 h-9 pixel-art">
+                        <rect x="11" y="2" width="3" height="3" fill="#67e8f9"/>
+                        <rect x="9" y="4" width="3" height="3" fill="#22d3ee"/>
+                        <rect x="7" y="6" width="3" height="3" fill="#06b6d4"/>
+                        <rect x="5" y="8" width="3" height="3" fill="#22d3ee"/>
+                        <rect x="3" y="8" width="2" height="2" fill="#0e7490"/>
+                        <rect x="6" y="11" width="2" height="2" fill="#0e7490"/>
+                        <rect x="4" y="10" width="2" height="2" fill="#78350f"/>
+                        <rect x="2" y="12" width="2" height="2" fill="#92400e"/>
+                    </svg>
+                </button>
+                <!-- Slot 2: Hunter's Crossbow -->
+                <button type="button" id="slot-2" onclick="selectHotbarSlot(2)" class="mc-slot flex flex-col items-center justify-center" title="Slot 2: Hunter's Crossbow">
+                    <span class="absolute top-0.5 left-1 mono text-[10px] font-bold text-slate-400">2</span>
+                    <svg viewBox="0 0 16 16" class="w-9 h-9 pixel-art">
+                        <rect x="3" y="3" width="10" height="2" fill="#64748b"/>
+                        <rect x="2" y="5" width="2" height="2" fill="#475569"/>
+                        <rect x="12" y="5" width="2" height="2" fill="#475569"/>
+                        <rect x="7" y="2" width="2" height="11" fill="#92400e"/>
+                        <rect x="6" y="11" width="4" height="3" fill="#78350f"/>
+                        <rect x="7" y="1" width="2" height="2" fill="#38bdf8"/>
+                    </svg>
+                </button>
+                <!-- Slot 3: Oak Planks -->
+                <button type="button" id="slot-3" onclick="selectHotbarSlot(3)" class="mc-slot flex flex-col items-center justify-center" title="Slot 3: Oak Planks">
+                    <span class="absolute top-0.5 left-1 mono text-[10px] font-bold text-slate-400">3</span>
+                    <svg viewBox="0 0 16 16" class="w-8 h-8 pixel-art border border-amber-950">
+                        <rect x="0" y="0" width="16" height="3" fill="#c28d4e"/>
+                        <rect x="0" y="3" width="16" height="1" fill="#6b4923"/>
+                        <rect x="0" y="4" width="16" height="3" fill="#b07c40"/>
+                        <rect x="0" y="7" width="16" height="1" fill="#6b4923"/>
+                        <rect x="0" y="8" width="16" height="3" fill="#c28d4e"/>
+                        <rect x="0" y="11" width="16" height="1" fill="#6b4923"/>
+                        <rect x="0" y="12" width="16" height="3" fill="#b07c40"/>
+                        <rect x="0" y="15" width="16" height="1" fill="#6b4923"/>
+                    </svg>
+                    <span id="count-planks" class="absolute bottom-0.5 right-1 mono text-[11px] font-black text-white drop-shadow">12</span>
+                </button>
+                <!-- Slot 4: Golden Apple -->
+                <button type="button" id="slot-4" onclick="selectHotbarSlot(4)" class="mc-slot flex flex-col items-center justify-center" title="Slot 4: Golden Apple">
+                    <span class="absolute top-0.5 left-1 mono text-[10px] font-bold text-slate-400">4</span>
+                    <svg viewBox="0 0 16 16" class="w-9 h-9 pixel-art">
+                        <rect x="7" y="2" width="2" height="2" fill="#78350f"/>
+                        <rect x="9" y="2" width="2" height="1" fill="#4ade80"/>
+                        <rect x="4" y="4" width="8" height="8" fill="#facc15"/>
+                        <rect x="3" y="5" width="10" height="6" fill="#eab308"/>
+                        <rect x="5" y="5" width="2" height="2" fill="#fef9c3"/>
+                        <rect x="5" y="12" width="6" height="1" fill="#ca8a04"/>
+                    </svg>
+                    <span id="count-apples" class="absolute bottom-0.5 right-1 mono text-[11px] font-black text-amber-300 drop-shadow">2</span>
+                </button>
+                <!-- Slot 5: Shockwave Totem of Undying -->
+                <button type="button" id="slot-5" onclick="selectHotbarSlot(5)" class="mc-slot flex flex-col items-center justify-center" title="Slot 5: Shockwave Totem">
+                    <span class="absolute top-0.5 left-1 mono text-[10px] font-bold text-slate-400">5</span>
+                    <svg viewBox="0 0 16 16" class="w-9 h-9 pixel-art">
+                        <rect x="5" y="2" width="6" height="4" fill="#facc15"/>
+                        <rect x="6" y="3" width="1" height="1" fill="#10b981"/>
+                        <rect x="9" y="3" width="1" height="1" fill="#10b981"/>
+                        <rect x="2" y="6" width="12" height="2" fill="#eab308"/>
+                        <rect x="5" y="6" width="6" height="6" fill="#f59e0b"/>
+                        <rect x="7" y="7" width="2" height="2" fill="#34d399"/>
+                        <rect x="6" y="12" width="4" height="2" fill="#d97706"/>
+                    </svg>
+                    <span id="cd-totem" class="absolute bottom-0.5 right-1 mono text-[10px] font-black text-emerald-300 drop-shadow">RDY</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Menu / Pause Modal -->
+    <div id="menu-modal" class="fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="mc-panel max-w-xl w-full p-6 sm:p-7 text-white space-y-5">
+            <div class="text-center space-y-1">
+                <div class="inline-block px-3 py-0.5 bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-black uppercase tracking-widest">
+                    3D Voxel Survival-Action Minigame
+                </div>
+                <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white drop-shadow">
+                    ANGECRAFT: <span class="text-emerald-400">MOB HUNT</span>
+                </h1>
+                <p class="text-xs sm:text-sm text-slate-300">
+                    Hunt down the island's hostile mobs and slay the armored <strong class="text-rose-400">Dread Brute Boss</strong> before the <strong class="text-amber-300">2:30 Sunset Timer</strong> hits zero!
+                </p>
+            </div>
+
+            <!-- Difficulty Selector -->
+            <div class="space-y-2">
+                <div class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Select Hunt Difficulty</div>
+                <div class="grid grid-cols-3 gap-2.5">
+                    <button type="button" id="tier-scout" onclick="selectTier('scout')" class="tier-card p-3 text-left cursor-pointer">
+                        <div class="text-xs font-black text-emerald-400">Scout</div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">10 Mobs + Boss. Forgiving damage.</div>
+                    </button>
+                    <button type="button" id="tier-hunter" onclick="selectTier('hunter')" class="tier-card selected p-3 text-left cursor-pointer">
+                        <div class="text-xs font-black text-amber-300">Hunter</div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">15 Mobs + Boss. Balanced survival action.</div>
+                    </button>
+                    <button type="button" id="tier-nightmare" onclick="selectTier('nightmare')" class="tier-card p-3 text-left cursor-pointer">
+                        <div class="text-xs font-black text-rose-400">Nightmare</div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">20 Mobs + Boss. Fast, lethal mobs.</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Clear How to Play & Controls Box -->
+            <div class="bg-slate-950/85 border border-slate-700 p-4 space-y-2 text-xs text-slate-300">
+                <div class="font-extrabold text-amber-300 uppercase tracking-wider text-[11px]">How to Play &amp; Controls</div>
+                <ul class="space-y-1 list-disc list-inside text-[11px]">
+                    <li><strong class="text-white">Goal:</strong> Eliminate the mob quota to summon the <strong class="text-rose-400">Dread Brute Boss</strong>, then defeat it before nightfall! Chain kills within 6s for up to a <strong class="text-amber-300">5x Score Combo</strong>.</li>
+                    <li><strong class="text-white">Move &amp; Dodge:</strong> <span class="mono text-emerald-300">WASD</span> Move • <span class="mono text-emerald-300">Space</span> Jump (hit while falling for <strong>1.5x Critical Hits!</strong>) • <span class="mono text-emerald-300">Shift</span> Sprint • <span class="mono text-emerald-300">E</span> Dodge Dash.</li>
+                    <li><strong class="text-white">Weapons &amp; Shield:</strong> <span class="mono text-amber-300">Left-Click</span> Attack / Shoot / Eat • <span class="mono text-amber-300">Hold Right-Click</span> Raise <strong>Oak Shield</strong> (blocks 80% melee, arrow &amp; Creeper blast damage!).</li>
+                    <li><strong class="text-white">Hotbar Selection:</strong> Press <span class="mono text-sky-300">1–5</span> directly, or press <span class="mono text-sky-300">Tab</span> to unlock your cursor and <strong>click any hotbar slot</strong> directly (scroll-swipe disabled so you never mis-switch!).</li>
+                </ul>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button id="btn-play" class="flex-1 mc-btn mc-btn-green py-3.5 px-6 font-black text-base tracking-wider uppercase cursor-pointer">
+                    START MOB HUNT
+                </button>
+                <button id="btn-restart" class="hidden mc-btn py-3.5 px-5 font-bold text-sm uppercase cursor-pointer">
+                    New Hunt
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory / Defeat Summary Modal -->
+    <div id="end-modal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="mc-panel max-w-md w-full p-7 text-center text-white space-y-5">
+            <div id="end-badge" class="inline-block px-3 py-1 bg-amber-500/20 border border-amber-400 text-amber-300 text-xs font-black uppercase tracking-widest">
+                HUNT COMPLETE
+            </div>
+            <h2 id="end-title" class="text-3xl font-black text-white">Island Cleared!</h2>
+            <p id="end-desc" class="text-sm text-slate-300">
+                You defeated the Dread Brute before sunset!
+            </p>
+
+            <div class="bg-slate-950/90 border border-slate-700 p-4 grid grid-cols-3 gap-2">
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase font-bold">Final Score</div>
+                    <div id="end-score" class="mono text-lg font-black text-sky-300">1,450</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase font-bold">Max Combo</div>
+                    <div id="end-combo" class="mono text-lg font-black text-amber-300">4x</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase font-bold">Clear Time</div>
+                    <div id="end-time" class="mono text-lg font-black text-emerald-400">01:48</div>
+                </div>
+            </div>
+
+            <button id="btn-play-again" class="w-full mc-btn mc-btn-green py-3.5 px-6 font-black text-base tracking-wider uppercase cursor-pointer">
+                HUNT AGAIN
+            </button>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * ============================================================================
+     * ANGECRAFT: MOB HUNT - SINGLE-FILE 3D VOXEL SURVIVAL-ACTION MINIGAME
+     * ============================================================================
+     */
+
+    // ----------------------------------------------------------------------------
+    // 1. SYNTHESIZED WEB AUDIO ENGINE (ZERO EXTERNAL FILES)
+    // ----------------------------------------------------------------------------
+    class SoundEngine {
+        constructor() { this.ctx = null; }
+        unlock() {
+            if (!this.ctx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (AC) this.ctx = new AC();
+            }
+            if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        }
+        tone(f1, f2, dur, type = 'triangle', vol = 0.14) {
+            if (!this.ctx) return;
+            const t = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(f1, t);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur);
+            gain.gain.setValueAtTime(vol, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + dur + 0.01);
+        }
+        noise(dur, freq = 900, vol = 0.2) {
+            if (!this.ctx) return;
+            const t = this.ctx.currentTime;
+            const len = Math.floor(this.ctx.sampleRate * dur);
+            const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.45));
+            const src = this.ctx.createBufferSource();
+            src.buffer = buf;
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = freq;
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(vol, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            src.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            src.start(t);
+        }
+        swordSwing()   { this.noise(0.11, 1400, 0.14); this.tone(360, 140, 0.1, 'sine', 0.1); }
+        hitFlesh()     { this.tone(190, 75, 0.11, 'sawtooth', 0.18); this.noise(0.08, 600, 0.15); }
+        critHit()      { this.tone(540, 880, 0.12, 'triangle', 0.2); setTimeout(() => this.tone(760, 1140, 0.14, 'triangle', 0.18), 45); }
+        bowShoot()     { this.tone(420, 150, 0.14, 'triangle', 0.16); this.noise(0.07, 1900, 0.12); }
+        shieldClang()  { this.tone(720, 480, 0.18, 'square', 0.22); this.tone(1120, 860, 0.14, 'triangle', 0.16); }
+        creeperHiss()  { this.noise(0.45, 2800, 0.16); }
+        explosion()    { this.noise(0.55, 160, 0.38); this.tone(110, 28, 0.5, 'sawtooth', 0.32); }
+        xpPickup()     { this.tone(740 + Math.random() * 260, 1280, 0.11, 'sine', 0.12); }
+        eatApple()     { [523, 659, 784, 1046].forEach((n, i) => setTimeout(() => this.tone(n, n * 1.03, 0.15, 'triangle', 0.16), i * 50)); }
+        totemBlast()   { this.tone(240, 620, 0.28, 'sawtooth', 0.22); this.noise(0.35, 500, 0.25); }
+        playerHurt()   { this.tone(160, 65, 0.2, 'sawtooth', 0.25); }
+        step(stone)    { this.tone(stone ? 175 : 100, 45, 0.045, 'triangle', 0.05); }
+        jump()         { this.tone(160, 300, 0.11, 'sine', 0.11); }
+        blockPlace()   { this.tone(155, 65, 0.09, 'triangle', 0.18); }
+        levelUp()      { [523, 659, 784, 1046, 1318].forEach((n, i) => setTimeout(() => this.tone(n, n * 1.02, 0.18, 'sine', 0.16), i * 55)); }
+        bossSpawn()    { [130, 110, 92].forEach((n, i) => setTimeout(() => this.tone(n, n * 0.85, 0.35, 'sawtooth', 0.24), i * 160)); }
+        fanfare(win)   {
+            const notes = win ? [523.25, 659.25, 783.99, 1046.5, 1318.5] : [349.23, 311.13, 277.18, 220];
+            notes.forEach((n, i) => setTimeout(() => this.tone(n, n, 0.28, 'triangle', 0.2), i * 95));
+        }
+    }
+    const sfx = new SoundEngine();
+
+    // ----------------------------------------------------------------------------
+    // 2. CRISP 16x16 MINECRAFT TEXTURES WITH PROCEDURAL BUMP DEPTH
+    // ----------------------------------------------------------------------------
+    function makePixelTex(drawFn) {
+        const c = document.createElement('canvas');
+        c.width = 16;
+        c.height = 16;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        drawFn(ctx);
+        const tex = new THREE.CanvasTexture(c);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.LinearMipMapLinearFilter;
+        return tex;
+    }
+    const px = (ctx, x, y, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1); };
+
+    const TEX_GRASS_TOP = makePixelTex((ctx) => {
+        const pal = ['#4ca63e', '#56b847', '#419135', '#62cc52'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 7 + y * 13 + ((x ^ y) & 3)) % pal.length]);
+    });
+
+    const TEX_DIRT = makePixelTex((ctx) => {
+        const pal = ['#7a553a', '#694830', '#876043', '#593c28'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 11 + y * 5 + ((x + y) & 3)) % pal.length]);
+    });
+
+    const TEX_GRASS_SIDE = makePixelTex((ctx) => {
+        const dirt = ['#7a553a', '#694830', '#876043', '#593c28'];
+        const grass = ['#4ca63e', '#56b847', '#419135'];
+        for (let y = 0; y < 16; y++) {
+            for (let x = 0; x < 16; x++) {
+                const rim = 2 + ((x * 5 + 3) % 3);
+                px(ctx, x, y, y < rim ? grass[(x + y) % grass.length] : dirt[(x * 11 + y * 5) % dirt.length]);
+            }
+        }
+    });
+
+    const TEX_STONE = makePixelTex((ctx) => {
+        const pal = ['#7d858e', '#707880', '#8a929b', '#636a72'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 3 + y * 11 + (x & 1)) % pal.length]);
+    });
+
+    const TEX_COBBLESTONE = makePixelTex((ctx) => {
+        ctx.fillStyle = '#4e545c';
+        ctx.fillRect(0, 0, 16, 16);
+        [[1,1,6,4,'#7d8590'],[8,1,7,5,'#6c757d'],[1,6,4,5,'#6c757d'],[6,7,5,4,'#8b939e'],[12,7,3,4,'#7d8590'],[1,12,7,3,'#8b939e'],[9,12,6,3,'#6c757d']]
+            .forEach(([x,y,w,h,c]) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); px(ctx, x, y, '#a1aab5'); });
+    });
+
+    const TEX_MOSSY_BRICK = makePixelTex((ctx) => {
+        ctx.fillStyle = '#727982';
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#464d54';
+        ctx.fillRect(0, 7, 16, 1);
+        ctx.fillRect(0, 15, 16, 1);
+        ctx.fillRect(7, 0, 1, 7);
+        ctx.fillRect(15, 8, 1, 7);
+        [[2,6,'#4ca63e'],[3,7,'#3c8730'],[10,14,'#4ca63e'],[11,15,'#3c8730'],[6,2,'#4ca63e']].forEach(([x,y,c]) => px(ctx, x, y, c));
+    });
+
+    const TEX_SAND = makePixelTex((ctx) => {
+        const pal = ['#e6d39c', '#dfd092', '#ede0b4', '#d4be81'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 3 + y * 9) % pal.length]);
+    });
+
+    const TEX_OAK_LOG_SIDE = makePixelTex((ctx) => {
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, (x % 4 === 0) ? '#4a331d' : ((x + y) % 5 === 0 ? '#5c4024' : '#6b4c2b'));
+    });
+
+    const TEX_OAK_LOG_TOP = makePixelTex((ctx) => {
+        ctx.fillStyle = '#52381e'; ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#b88b56'; ctx.fillRect(2, 2, 12, 12);
+        ctx.fillStyle = '#9c7140'; ctx.fillRect(4, 4, 8, 8);
+        ctx.fillStyle = '#b88b56'; ctx.fillRect(6, 6, 4, 4);
+    });
+
+    const TEX_OAK_PLANKS = makePixelTex((ctx) => {
+        for (let row = 0; row < 4; row++) {
+            const y0 = row * 4;
+            ctx.fillStyle = row % 2 === 0 ? '#ba874c' : '#a87740';
+            ctx.fillRect(0, y0, 16, 3);
+            ctx.fillStyle = '#6b4923';
+            ctx.fillRect(0, y0 + 3, 16, 1);
+            px(ctx, (row * 5 + 3) % 16, y0 + 1, '#946633');
+        }
+    });
+
+    const TEX_LEAVES = makePixelTex((ctx) => {
+        const pal = ['#2d7a32', '#398f3f', '#215e25', '#46a34c'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 7 + y * 11) % pal.length]);
+    });
+
+    const TEX_LANTERN = makePixelTex((ctx) => {
+        ctx.fillStyle = '#334155'; ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#f59e0b'; ctx.fillRect(2, 2, 12, 12);
+        ctx.fillStyle = '#fef08a'; ctx.fillRect(5, 5, 6, 6);
+    });
+
+    // ----------------------------------------------------------------------------
+    // 2B. 16x16 PIXEL-ART MINECRAFT MOB FACE & BODY TEXTURES
+    // ----------------------------------------------------------------------------
+    const TEX_ZOMBIE_FACE = makePixelTex((ctx) => {
+        const skin = ['#4d7c0f', '#5a8f14', '#3f660c', '#65a30d'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, skin[(x * 5 + y * 9) % skin.length]);
+        // Sunken dark Minecraft zombie eyes
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(2, 6, 3, 2);
+        ctx.fillRect(11, 6, 3, 2);
+        px(ctx, 3, 6, '#365314');
+        px(ctx, 12, 6, '#365314');
+        // Nose & mouth
+        ctx.fillStyle = '#365314';
+        ctx.fillRect(7, 8, 2, 2);
+        ctx.fillRect(5, 12, 6, 2);
+    });
+
+    const TEX_ZOMBIE_SKIN = makePixelTex((ctx) => {
+        const skin = ['#4d7c0f', '#5a8f14', '#3f660c'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, skin[(x * 7 + y * 3) % skin.length]);
+    });
+
+    const TEX_ZOMBIE_SHIRT = makePixelTex((ctx) => {
+        const cyan = ['#0284c7', '#0369a1', '#0ea5e9', '#075985'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, cyan[(x * 3 + y * 11) % cyan.length]);
+        // V-neck collar
+        ctx.fillStyle = '#4d7c0f';
+        ctx.fillRect(6, 0, 4, 2);
+        ctx.fillRect(7, 2, 2, 1);
+    });
+
+    const TEX_CREEPER_BODY = makePixelTex((ctx) => {
+        const pal = ['#16a34a', '#22c55e', '#15803d', '#4ade80', '#166534'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 13 + y * 7 + ((x ^ y) & 3)) % pal.length]);
+    });
+
+    const TEX_CREEPER_FACE = makePixelTex((ctx) => {
+        const pal = ['#16a34a', '#22c55e', '#15803d', '#4ade80'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, pal[(x * 13 + y * 7) % pal.length]);
+        // Iconic Minecraft Creeper Face (2 square eyes + frowny mouth)
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(3, 3, 3, 3);
+        ctx.fillRect(10, 3, 3, 3);
+        ctx.fillRect(6, 6, 4, 3);
+        ctx.fillRect(4, 8, 8, 4);
+        ctx.fillRect(4, 12, 2, 3);
+        ctx.fillRect(10, 12, 2, 3);
+    });
+
+    const TEX_SKELETON_BONE = makePixelTex((ctx) => {
+        const bone = ['#e2e8f0', '#cbd5e1', '#f1f5f9', '#94a3b8'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, bone[(x * 5 + y * 7) % bone.length]);
+    });
+
+    const TEX_SKELETON_FACE = makePixelTex((ctx) => {
+        const bone = ['#e2e8f0', '#cbd5e1', '#f1f5f9'];
+        for (let y = 0; y < 16; y++)
+            for (let x = 0; x < 16; x++)
+                px(ctx, x, y, bone[(x * 5 + y * 7) % bone.length]);
+        // Skull eye sockets, nose & toothy jaw
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(2, 6, 4, 3);
+        ctx.fillRect(10, 6, 4, 3);
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(7, 9, 2, 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(3, 12, 10, 2);
+        // White teeth pixels
+        ctx.fillStyle = '#f8fafc';
+        [4, 6, 8, 10].forEach(tx => px(ctx, tx, 12, '#f8fafc'));
+    });
+
+    const TEX_SKELETON_RIBS = makePixelTex((ctx) => {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(7, 0, 2, 16); // Spine
+        [2, 5, 8, 11].forEach(ry => {
+            ctx.fillRect(2, ry, 12, 2);
+        });
+    });
+
+    const TEX_BRUTE_FACE = makePixelTex((ctx) => {
+        // Armored Nether Brute face with scarred piglin snout, tusks & glowing crimson eyes
+        ctx.fillStyle = '#7c2d12';
+        ctx.fillRect(0, 0, 16, 16);
+        // Dark iron helmet brow
+        ctx.fillStyle = '#1e1b4b';
+        ctx.fillRect(0, 0, 16, 5);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(6, 2, 4, 3);
+        // Glowing red eyes
+        ctx.fillStyle = '#f43f5e';
+        ctx.fillRect(2, 6, 3, 2);
+        ctx.fillRect(11, 6, 3, 2);
+        px(ctx, 3, 6, '#fef08a');
+        px(ctx, 12, 6, '#fef08a');
+        // Snout & Ivory Tusks
+        ctx.fillStyle = '#9a3412';
+        ctx.fillRect(5, 9, 6, 4);
+        ctx.fillStyle = '#431407';
+        ctx.fillRect(6, 10, 1, 2);
+        ctx.fillRect(9, 10, 1, 2);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(3, 11, 2, 4);
+        ctx.fillRect(11, 11, 2, 4);
+    });
+
+    const TEX_BRUTE_ARMOR = makePixelTex((ctx) => {
+        ctx.fillStyle = '#1e1b4b';
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#312e81';
+        ctx.fillRect(1, 1, 14, 14);
+        // Gilded trim & glowing core
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(0, 0, 16, 2);
+        ctx.fillRect(0, 14, 16, 2);
+        ctx.fillStyle = '#f43f5e';
+        ctx.fillRect(6, 6, 4, 4);
+    });
+
+    function headMaterials(frontTex, sideTex) {
+        const side = new THREE.MeshLambertMaterial({ map: sideTex });
+        const front = new THREE.MeshLambertMaterial({ map: frontTex });
+        // Three.js BoxGeometry face order: +X, -X, +Y, -Y, +Z (front), -Z
+        return [side, side, side, side, front, side];
+    }
+
+    function blockMat(tex, emissiveHex = null) {
+        return new THREE.MeshStandardMaterial({
+            map: tex,
+            bumpMap: tex,
+            bumpScale: 0.03,
+            roughness: 0.85,
+            metalness: 0.05,
+            emissive: emissiveHex ? new THREE.Color(emissiveHex) : new THREE.Color('#000000'),
+            emissiveIntensity: emissiveHex ? 0.75 : 0
+        });
+    }
+
+    const BLOCKS = {
+        1: { name: 'Grass Block',       breakable: true,  top: blockMat(TEX_GRASS_TOP), side: blockMat(TEX_GRASS_SIDE), bottom: blockMat(TEX_DIRT) },
+        2: { name: 'Dirt',              breakable: true,  all: blockMat(TEX_DIRT) },
+        3: { name: 'Stone',             breakable: false, all: blockMat(TEX_STONE) },
+        4: { name: 'Cobblestone',       breakable: true,  all: blockMat(TEX_COBBLESTONE) },
+        5: { name: 'Mossy Stone Brick', breakable: false, all: blockMat(TEX_MOSSY_BRICK) },
+        6: { name: 'Sand',              breakable: true,  all: blockMat(TEX_SAND) },
+        7: { name: 'Oak Log',           breakable: false, top: blockMat(TEX_OAK_LOG_TOP), side: blockMat(TEX_OAK_LOG_SIDE), bottom: blockMat(TEX_OAK_LOG_TOP) },
+        8: { name: 'Oak Leaves',        breakable: true,  all: blockMat(TEX_LEAVES) },
+        9: { name: 'Oak Planks',        breakable: true,  all: blockMat(TEX_OAK_PLANKS) },
+        10:{ name: 'Glowstone Lantern', breakable: false, all: blockMat(TEX_LANTERN, '#f59e0b') }
+    };
+
+    // ----------------------------------------------------------------------------
+    // 3. THREE.JS RENDERER, STRICT LEVEL CAMERA & DYNAMIC DAY/SUNSET LIGHTING
+    // ----------------------------------------------------------------------------
+    const canvas = document.getElementById('game-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#78b9ff');
+    scene.fog = new THREE.FogExp2('#78b9ff', 0.013);
+
+    // Strictly level camera with YXZ rotation order & locked Z=0 roll
+    const camera = new THREE.PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.1, 180);
+    camera.up.set(0, 1, 0);
+    camera.rotation.order = 'YXZ';
+    scene.add(camera);
+
+    const hemiLight = new THREE.HemisphereLight('#ffffff', '#3f4b3b', 0.72);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight('#fffbeb', 1.15);
+    sunLight.position.set(28, 48, 22);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 4;
+    sunLight.shadow.camera.far = 130;
+    const sBound = 34;
+    sunLight.shadow.camera.left = -sBound;
+    sunLight.shadow.camera.right = sBound;
+    sunLight.shadow.camera.top = sBound;
+    sunLight.shadow.camera.bottom = -sBound;
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    // Square Minecraft Sun & Moon Discs
+    const sunDisc = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 8, 1),
+        new THREE.MeshBasicMaterial({ color: '#fef08a', fog: false })
+    );
+    scene.add(sunDisc);
+
+    const moonDisc = new THREE.Mesh(
+        new THREE.BoxGeometry(6, 6, 1),
+        new THREE.MeshBasicMaterial({ color: '#e2e8f0', fog: false })
+    );
+    scene.add(moonDisc);
+
+    // Drifting Blocky White Clouds
+    const cloudGroup = new THREE.Group();
+    const cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.88, fog: false });
+    for (let i = 0; i < 14; i++) {
+        const cw = 6 + (i % 4) * 3;
+        const cd = 4 + ((i * 2) % 4) * 2;
+        const cloud = new THREE.Mesh(new THREE.BoxGeometry(cw, 1.3, cd), cloudMat);
+        cloud.position.set((Math.random() - 0.5) * 115, 30 + (i % 3) * 1.6, (Math.random() - 0.5) * 115);
+        cloudGroup.add(cloud);
+    }
+    scene.add(cloudGroup);
+
+    // Tiled Water Plane around Island
+    const waterTex = makePixelTex((ctx) => {
+        ctx.fillStyle = '#2563eb';
+        ctx.fillRect(0, 0, 16, 16);
+        for (let y = 0; y < 16; y += 2) {
+            ctx.fillStyle = y % 4 === 0 ? '#3b82f6' : '#1d4ed8';
+            ctx.fillRect((y * 3) % 12, y, 5, 1);
+        }
+    });
+    waterTex.wrapS = THREE.RepeatWrapping;
+    waterTex.wrapT = THREE.RepeatWrapping;
+    waterTex.repeat.set(64, 64);
+
+    const waterMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(260, 260),
+        new THREE.MeshLambertMaterial({ map: waterTex, transparent: true, opacity: 0.84 })
+    );
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.y = 0.45;
+    scene.add(waterMesh);
+
+    function syncViewport() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio()) ||
+            renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) {
+            renderer.setSize(w, h);
+        }
+        if (Math.abs(camera.aspect - (w / h)) > 0.001) {
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        }
+    }
+    window.addEventListener('resize', syncViewport);
+
+    // Smooth Sun Arc & Atmosphere Shift (150s Day -> Crimson Sunset -> Red Alert)
+    const SKY_MORNING = new THREE.Color('#8ecae6');
+    const SKY_NOON    = new THREE.Color('#78b9ff');
+    const SKY_SUNSET  = new THREE.Color('#d9534f');
+    const SKY_TWILIGHT= new THREE.Color('#2a1226');
+
+    function updateDaylightCycle(progress) {
+        // progress: 0.0 (start) -> 1.0 (sunset deadline)
+        const angle = THREE.MathUtils.lerp(0.35, Math.PI - 0.12, progress);
+        const sx = Math.cos(angle) * 65;
+        const sy = Math.sin(angle) * 65;
+        const sz = -25;
+
+        sunLight.position.set(sx, Math.max(8, sy), sz);
+        sunDisc.position.set(sx * 1.25, sy * 1.25, sz * 1.25);
+        sunDisc.lookAt(0, 0, 0);
+
+        moonDisc.position.set(-sx * 1.25, -sy * 1.25 + 22, -sz * 1.25);
+        moonDisc.lookAt(0, 0, 0);
+
+        const skyCol = new THREE.Color();
+        if (progress < 0.25) {
+            skyCol.lerpColors(SKY_MORNING, SKY_NOON, progress / 0.25);
+            sunLight.color.set('#fffbeb');
+            sunLight.intensity = 1.15;
+            hemiLight.intensity = 0.72;
+        } else if (progress < 0.72) {
+            skyCol.copy(SKY_NOON);
+            sunLight.color.set('#ffffff');
+            sunLight.intensity = 1.2;
+            hemiLight.intensity = 0.75;
+        } else if (progress < 0.9) {
+            const t = (progress - 0.72) / 0.18;
+            skyCol.lerpColors(SKY_NOON, SKY_SUNSET, t);
+            sunLight.color.set('#fb923c');
+            sunLight.intensity = 0.95;
+            hemiLight.intensity = 0.55;
+        } else {
+            const t = (progress - 0.9) / 0.1;
+            skyCol.lerpColors(SKY_SUNSET, SKY_TWILIGHT, t);
+            sunLight.color.set('#f43f5e');
+            sunLight.intensity = 0.65;
+            hemiLight.intensity = 0.4;
+        }
+
+        scene.background.copy(skyCol);
+        scene.fog.color.copy(skyCol);
+    }
+
+    // ----------------------------------------------------------------------------
+    // 4. FIRST-PERSON VIEWMODEL (DIAMOND SWORD, CROSSBOW, BLOCKS & OFFHAND SHIELD)
+    // ----------------------------------------------------------------------------
+    const rightHandGroup = new THREE.Group();
+    camera.add(rightHandGroup);
+
+    // 1. Diamond Broadsword
+    const swordGroup = new THREE.Group();
+    const blade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.52, 0.08),
+        new THREE.MeshStandardMaterial({ color: '#22d3ee', emissive: '#0891b2', emissiveIntensity: 0.3, metalness: 0.6, roughness: 0.2 })
+    );
+    blade.position.y = 0.22;
+    const guard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.05, 0.22),
+        new THREE.MeshStandardMaterial({ color: '#0e7490', metalness: 0.7 })
+    );
+    const hilt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.16, 0.04),
+        new THREE.MeshLambertMaterial({ color: '#78350f' })
+    );
+    hilt.position.y = -0.1;
+    swordGroup.add(blade, guard, hilt);
+    swordGroup.position.set(0.38, -0.28, -0.48);
+    swordGroup.rotation.set(0.35, -0.3, 0.2);
+    rightHandGroup.add(swordGroup);
+
+    // 2. Hunter's Crossbow
+    const crossbowGroup = new THREE.Group();
+    const cbStock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.45), new THREE.MeshLambertMaterial({ color: '#78350f' }));
+    const cbLimb = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.04, 0.05), new THREE.MeshLambertMaterial({ color: '#475569' }));
+    cbLimb.position.z = -0.18;
+    const cbBolt = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.38), new THREE.MeshBasicMaterial({ color: '#fef08a' }));
+    cbBolt.position.set(0, 0.04, -0.08);
+    crossbowGroup.add(cbStock, cbLimb, cbBolt);
+    crossbowGroup.position.set(0.35, -0.25, -0.45);
+    crossbowGroup.visible = false;
+    rightHandGroup.add(crossbowGroup);
+
+    // 3. Held Block (Oak Planks)
+    const heldBlock = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), BLOCKS[9].all);
+    heldBlock.position.set(0.38, -0.28, -0.5);
+    heldBlock.rotation.set(0.2, 0.65, 0);
+    heldBlock.visible = false;
+    rightHandGroup.add(heldBlock);
+
+    // 4. Golden Apple / Shockwave Totem Orb
+    const heldArtifact = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.14, 0),
+        new THREE.MeshStandardMaterial({ color: '#facc15', emissive: '#ca8a04', emissiveIntensity: 0.6 })
+    );
+    heldArtifact.position.set(0.38, -0.26, -0.48);
+    heldArtifact.visible = false;
+    rightHandGroup.add(heldArtifact);
+
+    // Off-Hand Iron-Trimmed Oak Shield (Left Hand)
+    const shieldGroup = new THREE.Group();
+    const shieldWood = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.56, 0.34), BLOCKS[9].all);
+    const shieldRim = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.60, 0.38), new THREE.MeshStandardMaterial({ color: '#94a3b8', metalness: 0.65, roughness: 0.3 }));
+    shieldRim.position.x = -0.005;
+    shieldGroup.add(shieldWood, shieldRim);
+    shieldGroup.position.set(-0.44, -0.34, -0.44);
+    shieldGroup.rotation.set(0.1, 0.35, -0.08);
+    camera.add(shieldGroup);
+
+    let swingTimer = 0;
+    let walkBob = 0;
+
+    function updateHeldViewmodel(slot) {
+        swordGroup.visible = slot === 1;
+        crossbowGroup.visible = slot === 2;
+        heldBlock.visible = slot === 3;
+        heldArtifact.visible = slot === 4 || slot === 5;
+        if (slot === 4) {
+            heldArtifact.material.color.set('#facc15');
+            heldArtifact.material.emissive.set('#ca8a04');
+        } else if (slot === 5) {
+            heldArtifact.material.color.set('#10b981');
+            heldArtifact.material.emissive.set('#059669');
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 5. HANDCRAFTED ARENA ISLAND (WATCHTOWER, BRIDGE, COURTYARD & LANTERNS)
+    // ----------------------------------------------------------------------------
+    const MAP_RADIUS = 24;
+    const voxels = new Map();
+    const worldGroup = new THREE.Group();
+    const lanternLightGroup = new THREE.Group();
+    scene.add(worldGroup, lanternLightGroup);
+
+    const k3 = (x, y, z) => `${x},${y},${z}`;
+    const setVoxel = (x, y, z, id) => {
+        if (id === 0) voxels.delete(k3(x, y, z));
+        else voxels.set(k3(x, y, z), id);
+    };
+    const getVoxel = (x, y, z) => voxels.get(k3(x, y, z)) || 0;
+
+    function getSurfaceY(x, z) {
+        const rx = Math.round(x), rz = Math.round(z);
+        for (let y = 20; y >= 0; y--) {
+            if (getVoxel(rx, y, rz) !== 0) return y + 1;
+        }
+        return 1;
+    }
+
+    function buildHuntArena() {
+        voxels.clear();
+        while (lanternLightGroup.children.length > 0) lanternLightGroup.remove(lanternLightGroup.children[0]);
+
+        for (let x = -MAP_RADIUS; x <= MAP_RADIUS; x++) {
+            for (let z = -MAP_RADIUS; z <= MAP_RADIUS; z++) {
+                const dist = Math.hypot(x, z);
+                if (dist > MAP_RADIUS) continue;
+
+                // Rolling grassy hills
+                const hill1 = Math.max(0, 4.5 - Math.hypot(x + 12, z + 10) * 0.45);
+                const hill2 = Math.max(0, 4.0 - Math.hypot(x - 13, z - 11) * 0.45);
+                const rolling = Math.sin(x * 0.22) * Math.cos(z * 0.22) * 1.2;
+                const shore = Math.max(0, (MAP_RADIUS - dist) * 0.55);
+
+                let h = Math.floor(Math.min(9, 1 + Math.min(shore, 2.5) + hill1 + hill2 + rolling));
+
+                // Central Courtyard & Sunken Arena
+                if (dist < 6.5) h = 3;
+
+                // Shallow Stream running East-West at z = 8..10
+                if (z >= 8 && z <= 10 && x > -16 && x < 16) h = 0;
+
+                for (let y = 0; y <= h; y++) {
+                    let id = 2;
+                    if (y === h) id = h <= 1 ? 6 : 1;
+                    else if (y < h - 1) id = 3;
+                    setVoxel(x, y, z, id);
+                }
+            }
+        }
+
+        // 1. Central Ruined Stone Watchtower (0, 3, -4) with Climbable Stair Steps
+        for (let tx = -2; tx <= 2; tx++) {
+            for (let tz = -6; tz <= -2; tz++) {
+                setVoxel(tx, 3, tz, 5);
+                if ((Math.abs(tx) === 2 && Math.abs(tz + 4) === 2)) {
+                    for (let ty = 4; ty <= 8; ty++) setVoxel(tx, ty, tz, 5);
+                    setVoxel(tx, 9, tz, 10);
+                    const pt = new THREE.PointLight('#fb923c', 0.9, 14);
+                    pt.position.set(tx, 9.6, tz);
+                    lanternLightGroup.add(pt);
+                }
+            }
+        }
+        // Watchtower Platform & Stairway
+        for (let tx = -2; tx <= 2; tx++)
+            for (let tz = -6; tz <= -2; tz++)
+                setVoxel(tx, 7, tz, 9);
+        setVoxel(0, 4, -1, 4);
+        setVoxel(0, 5, -2, 4);
+        setVoxel(0, 6, -3, 4);
+        setVoxel(0, 7, -3, 0); // Hatch opening
+
+        // 2. Wooden Bridge over the Southern Stream (x = -1..1, z = 7..11)
+        for (let bz = 7; bz <= 11; bz++) {
+            setVoxel(-1, 2, bz, 9);
+            setVoxel(0, 2, bz, 9);
+            setVoxel(1, 2, bz, 9);
+            if (bz === 7 || bz === 11) {
+                setVoxel(-1, 3, bz, 7);
+                setVoxel(1, 3, bz, 7);
+                setVoxel(-1, 4, bz, 10);
+                setVoxel(1, 4, bz, 10);
+            }
+        }
+
+        // 3. Ancient Sunken Courtyard Pillars (East & West)
+        [[-11, 3, 2], [11, 3, -3], [12, 3, 14], [-12, 3, 15]].forEach(([px, py, pz]) => {
+            setVoxel(px, py, pz, 5);
+            setVoxel(px, py + 1, pz, 5);
+            setVoxel(px, py + 2, pz, 10);
+            const pt = new THREE.PointLight('#fbbf24', 0.85, 13);
+            pt.position.set(px, py + 2.6, pz);
+            lanternLightGroup.add(pt);
+        });
+
+        // 4. Oak Trees around the Island
+        [[-8, 4, -9], [9, 4, -10], [-14, 4, -2], [15, 4, 3], [-6, 4, 15], [8, 4, 16]].forEach(([tx, ty, tz]) => {
+            if (getVoxel(tx, ty - 1, tz) === 1) {
+                for (let h = 0; h < 3; h++) setVoxel(tx, ty + h, tz, 7);
+                for (let lx = -1; lx <= 1; lx++) {
+                    for (let lz = -1; lz <= 1; lz++) {
+                        setVoxel(tx + lx, ty + 3, tz + lz, 8);
+                        if (Math.abs(lx) + Math.abs(lz) <= 1) setVoxel(tx + lx, ty + 4, tz + lz, 8);
+                    }
+                }
+            }
+        });
+    }
+
+    const CUBE_FACES = [
+        { slot: 'side',   dir: [ 1,  0,  0], corners: [[1,0,1],[1,0,0],[1,1,0],[1,1,1]] },
+        { slot: 'side',   dir: [-1,  0,  0], corners: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]] },
+        { slot: 'top',    dir: [ 0,  1,  0], corners: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]] },
+        { slot: 'bottom', dir: [ 0, -1,  0], corners: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },
+        { slot: 'side',   dir: [ 0,  0,  1], corners: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },
+        { slot: 'side',   dir: [ 0,  0, -1], corners: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] }
+    ];
+
+    function rebuildChunks() {
+        while (worldGroup.children.length > 0) {
+            const m = worldGroup.children[0];
+            m.geometry.dispose();
+            worldGroup.remove(m);
+        }
+
+        const batches = new Map();
+        const getBatch = (mat) => {
+            if (!batches.has(mat)) batches.set(mat, { pos: [], norm: [], uv: [], idx: [] });
+            return batches.get(mat);
+        };
+
+        voxels.forEach((id, key) => {
+            const [x, y, z] = key.split(',').map(Number);
+            const def = BLOCKS[id];
+            if (!def) return;
+
+            for (const f of CUBE_FACES) {
+                if (getVoxel(x + f.dir[0], y + f.dir[1], z + f.dir[2]) !== 0) continue;
+                const mat = def.all || def[f.slot];
+                const b = getBatch(mat);
+                const ndx = b.pos.length / 3;
+                const uvs = [[0,0],[1,0],[1,1],[0,1]];
+                f.corners.forEach((c, i) => {
+                    b.pos.push(x + c[0] - 0.5, y + c[1] - 0.5, z + c[2] - 0.5);
+                    b.norm.push(f.dir[0], f.dir[1], f.dir[2]);
+                    b.uv.push(uvs[i][0], uvs[i][1]);
+                });
+                b.idx.push(ndx, ndx + 1, ndx + 2, ndx, ndx + 2, ndx + 3);
+            }
+        });
+
+        batches.forEach((b, mat) => {
+            if (b.pos.length === 0) return;
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+            geo.setAttribute('normal', new THREE.Float32BufferAttribute(b.norm, 3));
+            geo.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
+            geo.setIndex(b.idx);
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            worldGroup.add(mesh);
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 6. PARTICLE SYSTEM, XP ORBS, CROSSBOW BOLTS & SKELETON ARROWS
+    // ----------------------------------------------------------------------------
+    const particles = [];
+    const particleGroup = new THREE.Group();
+    scene.add(particleGroup);
+
+    function spawnParticles(pos, colorHex, count = 12, speed = 4.5, size = 0.14) {
+        const geo = new THREE.BoxGeometry(size, size, size);
+        const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+        for (let i = 0; i < count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(pos);
+            const vel = new THREE.Vector3(
+                (Math.random() - 0.5) * speed * 2,
+                Math.random() * speed + 1.5,
+                (Math.random() - 0.5) * speed * 2
+            );
+            particleGroup.add(mesh);
+            particles.push({ mesh, vel, life: 0.45 + Math.random() * 0.35 });
+        }
+    }
+
+    const xpOrbs = [];
+    const xpGroup = new THREE.Group();
+    scene.add(xpGroup);
+
+    function spawnXPOrbs(pos, count = 3) {
+        const geo = new THREE.OctahedronGeometry(0.16, 0);
+        const mat = new THREE.MeshBasicMaterial({ color: '#4ade80' });
+        for (let i = 0; i < count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.8, 0.5, (Math.random() - 0.5) * 0.8));
+            xpGroup.add(mesh);
+            xpOrbs.push({ mesh, value: 25 });
+        }
+    }
+
+    const projectiles = [];
+    const projGroup = new THREE.Group();
+    scene.add(projGroup);
+
+    function spawnProjectile(origin, dir, fromPlayer) {
+        const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.08, 0.08, 0.55),
+            new THREE.MeshBasicMaterial({ color: fromPlayer ? '#38bdf8' : '#f43f5e' })
+        );
+        mesh.position.copy(origin);
+        mesh.lookAt(origin.clone().add(dir));
+        projGroup.add(mesh);
+        projectiles.push({
+            mesh,
+            vel: dir.clone().normalize().multiplyScalar(fromPlayer ? 34 : 18),
+            fromPlayer,
+            life: 2.2
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 7. ARTICULATED 3D VOXEL MOBS (ZOMBIE, CREEPER, SKELETON & DREAD BRUTE BOSS)
+    // ----------------------------------------------------------------------------
+    const mobs = [];
+    const mobGroup = new THREE.Group();
+    scene.add(mobGroup);
+
+    const SPAWN_RING = [
+        [-15, -13], [15, -13], [-16, 13], [16, 13],
+        [0, -17], [0, 17], [-18, 0], [18, 0],
+        [-10, -15], [11, 15]
+    ];
+
+    class VoxelMob {
+        constructor(type, pos, dmgScale = 1.0) {
+            this.type = type; // 'zombie' | 'creeper' | 'skeleton' | 'boss'
+            this.pos = pos.clone();
+            this.knockVel = new THREE.Vector3();
+            this.root = new THREE.Group();
+            this.animPhase = Math.random() * 6;
+            this.attackCooldown = 1.0;
+            this.stunTimer = 0;
+            this.hurtTimer = 0;
+            this.fuseTimer = 0;
+            this.isFusing = false;
+            this.dmgScale = dmgScale;
+
+            this.buildModel();
+            this.root.position.copy(this.pos);
+            mobGroup.add(this.root);
+        }
+
+        buildModel() {
+            if (this.type === 'zombie') {
+                this.maxHp = 20; this.hp = 20; this.speed = 3.2; this.points = 100;
+                const skin = new THREE.MeshLambertMaterial({ map: TEX_ZOMBIE_SKIN });
+                const shirt = new THREE.MeshLambertMaterial({ map: TEX_ZOMBIE_SHIRT });
+                const pants = new THREE.MeshLambertMaterial({ color: '#3730a3' });
+
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 0.52), headMaterials(TEX_ZOMBIE_FACE, TEX_ZOMBIE_SKIN));
+                head.position.y = 1.56; head.castShadow = true;
+                const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.72, 0.28), shirt);
+                torso.position.y = 0.94; torso.castShadow = true;
+                this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.65), skin);
+                this.armL.position.set(-0.36, 1.15, 0.24);
+                this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.65), skin);
+                this.armR.position.set(0.36, 1.15, 0.24);
+                this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.58, 0.24), pants);
+                this.legL.position.set(-0.14, 0.29, 0);
+                this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.58, 0.24), pants);
+                this.legR.position.set(0.14, 0.29, 0);
+                this.root.add(head, torso, this.armL, this.armR, this.legL, this.legR);
+
+            } else if (this.type === 'creeper') {
+                this.maxHp = 18; this.hp = 18; this.speed = 3.75; this.points = 140;
+                this.creeperMat = new THREE.MeshLambertMaterial({ map: TEX_CREEPER_BODY, emissive: '#000000' });
+                this.creeperFaceMat = new THREE.MeshLambertMaterial({ map: TEX_CREEPER_FACE, emissive: '#000000' });
+
+                const head = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.54, 0.54, 0.54),
+                    [this.creeperMat, this.creeperMat, this.creeperMat, this.creeperMat, this.creeperFaceMat, this.creeperMat]
+                );
+                head.position.y = 1.48; head.castShadow = true;
+
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.82, 0.32), this.creeperMat);
+                body.position.y = 0.82; body.castShadow = true;
+
+                this.legFL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.42, 0.22), this.creeperMat);
+                this.legFL.position.set(-0.15, 0.21, 0.2);
+                this.legFR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.42, 0.22), this.creeperMat);
+                this.legFR.position.set(0.15, 0.21, 0.2);
+                this.legBL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.42, 0.22), this.creeperMat);
+                this.legBL.position.set(-0.15, 0.21, -0.2);
+                this.legBR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.42, 0.22), this.creeperMat);
+                this.legBR.position.set(0.15, 0.21, -0.2);
+                this.root.add(head, body, this.legFL, this.legFR, this.legBL, this.legBR);
+
+            } else if (this.type === 'skeleton') {
+                this.maxHp = 16; this.hp = 16; this.speed = 2.9; this.points = 130;
+                const bone = new THREE.MeshLambertMaterial({ map: TEX_SKELETON_BONE });
+                const ribsMat = new THREE.MeshLambertMaterial({ map: TEX_SKELETON_RIBS });
+
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), headMaterials(TEX_SKELETON_FACE, TEX_SKELETON_BONE));
+                head.position.y = 1.54; head.castShadow = true;
+
+                const ribs = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.72, 0.22), ribsMat);
+                ribs.position.y = 0.94; ribs.castShadow = true;
+                this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.62), bone);
+                this.armL.position.set(-0.3, 1.15, 0.22);
+                this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.62), bone);
+                this.armR.position.set(0.3, 1.15, 0.22);
+                const bow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.65, 0.08), new THREE.MeshLambertMaterial({ color: '#78350f' }));
+                bow.position.set(0.3, 1.15, 0.52);
+
+                this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), bone);
+                this.legL.position.set(-0.13, 0.29, 0);
+                this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), bone);
+                this.legR.position.set(0.13, 0.29, 0);
+                this.root.add(head, ribs, this.armL, this.armR, bow, this.legL, this.legR);
+
+            } else if (this.type === 'boss') {
+                // Towering Dread Brute Sunset Boss
+                this.maxHp = 120; this.hp = 120; this.speed = 3.1; this.points = 750;
+                const armor = new THREE.MeshStandardMaterial({ map: TEX_BRUTE_ARMOR, metalness: 0.45, roughness: 0.45 });
+                const visor = new THREE.MeshBasicMaterial({ color: '#f43f5e' });
+                const hornMat = new THREE.MeshLambertMaterial({ color: '#f8fafc' });
+
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.78, 0.78), headMaterials(TEX_BRUTE_FACE, TEX_BRUTE_ARMOR));
+                head.position.y = 2.36; head.castShadow = true;
+                const hornL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.14), hornMat);
+                hornL.position.set(-0.44, 2.76, 0.1); hornL.rotation.z = 0.3;
+                const hornR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.14), hornMat);
+                hornR.position.set(0.44, 2.76, 0.1); hornR.rotation.z = -0.3;
+
+                const torso = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.15, 0.58), armor);
+                torso.position.y = 1.4; torso.castShadow = true;
+                this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.36, 1.05, 0.36), armor);
+                this.armL.position.set(-0.74, 1.4, 0);
+                this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.36, 1.05, 0.36), armor);
+                this.armR.position.set(0.74, 1.4, 0);
+                // Dread Cleaver Axe in Right Hand
+                const axe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.95, 0.44), visor);
+                axe.position.set(0, -0.45, 0.25);
+                this.armR.add(axe);
+
+                this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.82, 0.38), armor);
+                this.legL.position.set(-0.26, 0.41, 0);
+                this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.82, 0.38), armor);
+                this.legR.position.set(0.26, 0.41, 0);
+
+                this.root.add(head, hornL, hornR, torso, this.armL, this.armR, this.legL, this.legR);
+            }
+
+            // Floating 3D Minecraft Mob Health Bar above head
+            if (this.type !== 'boss') {
+                const hpBg = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.12), new THREE.MeshBasicMaterial({ color: '#090c12', side: THREE.DoubleSide }));
+                hpBg.position.y = 2.08;
+                this.hpFillMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.89, 0.08), new THREE.MeshBasicMaterial({ color: '#ef4444', side: THREE.DoubleSide }));
+                this.hpFillMesh.position.set(0, 2.08, 0.005);
+                this.hpBarGroup = new THREE.Group();
+                this.hpBarGroup.add(hpBg, this.hpFillMesh);
+                this.hpBarGroup.visible = false;
+                this.root.add(this.hpBarGroup);
+            }
+        }
+
+        takeDamage(dmg, fromPos, knockStrength = 7.5, isCrit = false) {
+            this.hp = Math.max(0, this.hp - dmg);
+            this.hurtTimer = 0.18;
+            spawnDamagePopup(this.pos.clone().add(new THREE.Vector3(0, 1.85, 0)), dmg, isCrit);
+
+            if (this.hpBarGroup) {
+                this.hpBarGroup.visible = true;
+                const ratio = Math.max(0.01, this.hp / this.maxHp);
+                this.hpFillMesh.scale.x = ratio;
+                this.hpFillMesh.position.x = -(1 - ratio) * 0.445;
+            }
+            const push = new THREE.Vector3().subVectors(this.pos, fromPos);
+            push.y = 0;
+            if (push.lengthSq() < 0.001) push.set(1, 0, 0);
+            push.normalize().multiplyScalar(this.type === 'boss' ? knockStrength * 0.45 : knockStrength);
+            this.knockVel.copy(push);
+
+            // Cancel Creeper fuse if knocked far enough away
+            if (this.type === 'creeper' && this.isFusing && knockStrength >= 7) {
+                this.isFusing = false;
+                this.fuseTimer = 0;
+                this.root.scale.set(1, 1, 1);
+                this.creeperMat.emissive.set('#000000');
+                this.creeperFaceMat.emissive.set('#000000');
+            }
+
+            spawnParticles(this.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), isCrit ? '#facc15' : '#ef4444', isCrit ? 14 : 8, 4.2);
+
+            if (this.type === 'boss') {
+                document.getElementById('boss-hp-text').textContent = `${Math.ceil(this.hp)} / ${this.maxHp}`;
+                document.getElementById('boss-hp-fill').style.width = `${(this.hp / this.maxHp) * 100}%`;
+            }
+
+            if (this.hp <= 0) {
+                this.die();
+            }
+        }
+
+        die() {
+            mobGroup.remove(this.root);
+            const idx = mobs.indexOf(this);
+            if (idx !== -1) mobs.splice(idx, 1);
+
+            spawnParticles(this.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), '#e2e8f0', 18, 5.5, 0.22);
+            spawnXPOrbs(this.pos, this.type === 'boss' ? 8 : 3);
+
+            // Drop planks or occasional Golden Apple
+            if (Math.random() < 0.45) {
+                hunt.planks += 3;
+                refreshHotbarCounts();
+            }
+            if (Math.random() < 0.18) {
+                hunt.apples++;
+                refreshHotbarCounts();
+                showToast('🍎 MOB DROPPED A GOLDEN APPLE!', 'border-amber-400 text-amber-300');
+            }
+
+            registerMobKill(this);
+        }
+
+        update(dt, playerPos) {
+            if (this.hurtTimer > 0) this.hurtTimer -= dt;
+            if (this.attackCooldown > 0) this.attackCooldown -= dt;
+
+            // Knockback Physics
+            if (this.knockVel.lengthSq() > 0.04) {
+                const nx = this.pos.x + this.knockVel.x * dt;
+                const nz = this.pos.z + this.knockVel.z * dt;
+                if (Math.hypot(nx, nz) < MAP_RADIUS - 1.2) {
+                    this.pos.x = nx;
+                    this.pos.z = nz;
+                }
+                this.knockVel.multiplyScalar(Math.max(0, 1 - 9 * dt));
+            }
+
+            if (this.stunTimer > 0) {
+                this.stunTimer -= dt;
+                this.root.position.copy(this.pos);
+                return;
+            }
+
+            const toPlayer = new THREE.Vector3(playerPos.x - this.pos.x, 0, playerPos.z - this.pos.z);
+            const dist = toPlayer.length();
+            if (dist > 0.01) {
+                this.root.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
+            }
+
+            // --- CREEPER FUSE & EXPLOSION AI ---
+            if (this.type === 'creeper') {
+                if (dist < 2.8 && !this.isFusing) {
+                    this.isFusing = true;
+                    this.fuseTimer = 1.4;
+                    sfx.creeperHiss();
+                }
+                if (this.isFusing) {
+                    this.fuseTimer -= dt;
+                    const pulse = 1 + (1.4 - this.fuseTimer) * 0.22;
+                    this.root.scale.set(pulse, 1 + (1.4 - this.fuseTimer) * 0.12, pulse);
+                    const flash = Math.floor(this.fuseTimer * 16) % 2 === 0;
+                    const emCol = flash ? '#ffffff' : '#ef4444';
+                    this.creeperMat.emissive.set(emCol);
+                    this.creeperMat.emissiveIntensity = 0.85;
+                    this.creeperFaceMat.emissive.set(emCol);
+                    this.creeperFaceMat.emissiveIntensity = 0.85;
+
+                    if (this.fuseTimer <= 0) {
+                        sfx.explosion();
+                        spawnParticles(this.pos.clone().add(new THREE.Vector3(0, 1, 0)), '#fb923c', 26, 8.5, 0.28);
+                        if (dist < 4.5) {
+                            damagePlayer(Math.round(8 * this.dmgScale), 'Creeper Blast');
+                        }
+                        mobGroup.remove(this.root);
+                        const idx = mobs.indexOf(this);
+                        if (idx !== -1) mobs.splice(idx, 1);
+                        return;
+                    }
+                    this.root.position.copy(this.pos);
+                    return;
+                }
+            }
+
+            // --- SKELETON RANGED ARCHER AI ---
+            if (this.type === 'skeleton') {
+                if (dist < 13 && dist > 6.5) {
+                    // Strafe sideways while aiming
+                    const strafe = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize();
+                    const nx = this.pos.x + strafe.x * (this.speed * 0.65) * dt;
+                    const nz = this.pos.z + strafe.z * (this.speed * 0.65) * dt;
+                    if (Math.hypot(nx, nz) < MAP_RADIUS - 1.5) {
+                        this.pos.x = nx;
+                        this.pos.z = nz;
+                    }
+                } else if (dist >= 13) {
+                    const dir = toPlayer.clone().normalize();
+                    this.pos.x += dir.x * this.speed * dt;
+                    this.pos.z += dir.z * this.speed * dt;
+                }
+
+                if (dist < 16 && this.attackCooldown <= 0) {
+                    this.attackCooldown = 2.3;
+                    const aimOrigin = this.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
+                    const aimDir = playerPos.clone().sub(aimOrigin);
+                    spawnProjectile(aimOrigin, aimDir, false);
+                    sfx.bowShoot();
+                }
+            } else {
+                // --- ZOMBIE, CREEPER & DREAD BRUTE CHASE AI ---
+                const stopRange = this.type === 'boss' ? 2.1 : 1.55;
+                if (dist > stopRange) {
+                    const dir = toPlayer.clone().normalize();
+                    const nx = this.pos.x + dir.x * this.speed * dt;
+                    const nz = this.pos.z + dir.z * this.speed * dt;
+                    if (Math.hypot(nx, nz) < MAP_RADIUS - 1.2) {
+                        this.pos.x = nx;
+                        this.pos.z = nz;
+                    }
+                    this.animPhase += dt * 10;
+                    const sw = Math.sin(this.animPhase) * 0.55;
+                    if (this.legL) { this.legL.rotation.x = sw; this.legR.rotation.x = -sw; }
+                    if (this.legFL) {
+                        this.legFL.rotation.x = sw; this.legBR.rotation.x = sw;
+                        this.legFR.rotation.x = -sw; this.legBL.rotation.x = -sw;
+                    }
+                } else if (this.type !== 'creeper' && this.attackCooldown <= 0) {
+                    this.attackCooldown = this.type === 'boss' ? 1.35 : 1.15;
+                    if (this.armR) this.armR.rotation.x = -1.2;
+                    const rawDmg = this.type === 'boss' ? 5 : 3;
+                    damagePlayer(Math.max(1, Math.round(rawDmg * this.dmgScale)), this.type === 'boss' ? 'Dread Brute' : 'Forest Zombie');
+                }
+            }
+
+            // Snap smoothly to terrain surface
+            const groundY = getSurfaceY(this.pos.x, this.pos.z);
+            if (groundY > this.pos.y) this.pos.y = Math.min(groundY, this.pos.y + 10 * dt);
+            else if (groundY < this.pos.y) this.pos.y = Math.max(groundY, this.pos.y - 16 * dt);
+
+            this.root.position.copy(this.pos);
+            if (this.hpBarGroup && this.hpBarGroup.visible) {
+                this.hpBarGroup.lookAt(camera.position);
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 8. GAME STATE, COMBO MULTIPLIER, COMBAT & ABILITIES
+    // ----------------------------------------------------------------------------
+    const TIER_CONFIG = {
+        scout:     { label: 'SCOUT',     quota: 10, dmgScale: 0.75, maxAlive: 5 },
+        hunter:    { label: 'HUNTER',    quota: 15, dmgScale: 1.0,  maxAlive: 6 },
+        nightmare: { label: 'NIGHTMARE', quota: 20, dmgScale: 1.35, maxAlive: 8 }
+    };
+
+    const DAY_DURATION = 150; // 2:30 Sunset Deadline
+
+    const hunt = {
+        tier: 'hunter',
+        active: false,
+        paused: true,
+        over: false,
+        timeLeft: DAY_DURATION,
+        kills: 0,
+        quota: 15,
+        bossSpawned: false,
+        bossDefeated: false,
+        score: 0,
+        xp: 0,
+        xpLevel: 1,
+        combo: 1,
+        maxCombo: 1,
+        comboTimer: 0,
+        hp: 20, // 10 Hearts = 20 HP
+        stamina: 100,
+        slot: 1,
+        planks: 12,
+        apples: 2,
+        crossbowCooldown: 0,
+        totemCooldown: 0,
+        dashCooldown: 0,
+        blocking: false,
+        spawnTimer: 0,
+        bestScore: parseInt(localStorage.getItem('ac_hunt_best_score') || '0', 10)
+    };
+
+    const ITEM_LABELS = {
+        1: 'Diamond Broadsword (LMB Slash • Jump+Hit = 1.5x Crit!)',
+        2: "Hunter's Crossbow (LMB Long-Range Bolt)",
+        3: 'Oak Planks (LMB/RMB Place Cover Wall)',
+        4: 'Golden Apple (LMB or [F] Heal +4 Hearts)',
+        5: 'Shockwave Totem (LMB or [Q] Blast & Stun Mobs)'
+    };
+
+    function selectTier(t) {
+        hunt.tier = t;
+        ['scout', 'hunter', 'nightmare'].forEach((id) => {
+            document.getElementById(`tier-${id}`).classList.toggle('selected', id === t);
+        });
+    }
+
+    function fmtTime(sec) {
+        const s = Math.max(0, Math.ceil(sec));
+        return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    let toastTimeout = null;
+    function showToast(msg, classes = 'border-amber-400 text-amber-300') {
+        const el = document.getElementById('event-toast');
+        el.textContent = msg;
+        el.className = `fixed top-28 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 bg-slate-950/90 border-2 ${classes} text-xs sm:text-sm font-extrabold tracking-wide shadow-2xl opacity-100 pointer-events-none transition-opacity duration-200`;
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => { el.classList.remove('opacity-100'); el.classList.add('opacity-0'); }, 2200);
+    }
+
+    function spawnDamagePopup(worldPos, dmg, isCrit = false) {
+        const proj = worldPos.clone().project(camera);
+        if (proj.z > 1) return;
+        const x = (proj.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-proj.y * 0.5 + 0.5) * window.innerHeight;
+        const el = document.createElement('div');
+        el.className = `dmg-popup ${isCrit ? 'text-amber-300 text-lg' : 'text-rose-400 text-sm'}`;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.textContent = isCrit ? `⚡-${dmg} CRIT!` : `-${dmg}`;
+        document.getElementById('world-popups').appendChild(el);
+        setTimeout(() => el.remove(), 750);
+    }
+
+    function updateXPBar() {
+        const needed = hunt.xpLevel * 100;
+        const pct = Math.min(100, Math.round((hunt.xp / needed) * 100));
+        document.getElementById('xp-bar-fill').style.width = `${pct}%`;
+        document.getElementById('xp-level-text').textContent = `LVL ${hunt.xpLevel}`;
+    }
+
+    function updateHeartsHUD() {
+        const fullHearts = Math.max(0, Math.ceil(hunt.hp / 2));
+        const emptyHearts = Math.max(0, 10 - fullHearts);
+        document.getElementById('hud-hearts').textContent = '❤️'.repeat(fullHearts) + '🖤'.repeat(emptyHearts);
+    }
+
+    function refreshHotbarCounts() {
+        document.getElementById('count-planks').textContent = hunt.planks;
+        document.getElementById('count-apples').textContent = hunt.apples;
+    }
+
+    function selectHotbarSlot(n) {
+        hunt.slot = n;
+        [1, 2, 3, 4, 5].forEach((i) => document.getElementById(`slot-${i}`).classList.toggle('active', i === n));
+        document.getElementById('hud-item-name').textContent = ITEM_LABELS[n];
+        document.getElementById('reload-bar-bg').classList.toggle('hidden', n !== 2);
+        updateHeldViewmodel(n);
+        sfx.blockPlace();
+    }
+
+    function damagePlayer(amount, sourceName) {
+        if (hunt.over) return;
+        let finalDmg = amount;
+        if (hunt.blocking) {
+            finalDmg = Math.max(1, Math.round(amount * 0.2));
+            sfx.shieldClang();
+            showToast(`🛡️ SHIELD BLOCKED ${sourceName.toUpperCase()}! (-${finalDmg} HP)`, 'border-sky-400 text-sky-300');
+        } else {
+            sfx.playerHurt();
+            const flash = document.getElementById('damage-flash');
+            flash.style.opacity = '1';
+            setTimeout(() => { flash.style.opacity = '0'; }, 180);
+        }
+
+        hunt.hp = Math.max(0, hunt.hp - finalDmg);
+        updateHeartsHUD();
+        if (hunt.hp <= 0) {
+            endHunt(false, `You were defeated by a ${sourceName}!`);
+        }
+    }
+
+    function eatGoldenApple() {
+        if (hunt.apples <= 0) {
+            showToast('No Golden Apples left!', 'border-rose-400 text-rose-300');
+            return;
+        }
+        hunt.apples--;
+        hunt.hp = Math.min(20, hunt.hp + 8);
+        hunt.stamina = 100;
+        refreshHotbarCounts();
+        updateHeartsHUD();
+        sfx.eatApple();
+        const flash = document.getElementById('heal-flash');
+        flash.style.opacity = '1';
+        setTimeout(() => { flash.style.opacity = '0'; }, 260);
+        showToast('🍎 GOLDEN APPLE! +4 HEARTS & FULL STAMINA!', 'border-amber-400 text-amber-300');
+    }
+
+    function triggerShockwaveTotem() {
+        if (hunt.totemCooldown > 0) {
+            showToast(`Totem recharging (${hunt.totemCooldown.toFixed(1)}s)...`, 'border-emerald-400 text-emerald-300');
+            return;
+        }
+        hunt.totemCooldown = 10.0;
+        sfx.totemBlast();
+        spawnParticles(player.pos.clone().add(new THREE.Vector3(0, -0.5, 0)), '#10b981', 28, 8.0, 0.22);
+
+        let hitCount = 0;
+        mobs.forEach((m) => {
+            if (m.pos.distanceTo(player.pos) < 7.5) {
+                m.stunTimer = 2.5;
+                m.takeDamage(5, player.pos, 11.0, false);
+                hitCount++;
+            }
+        });
+        showToast(`🗿 SHOCKWAVE TOTEM BLASTED ${hitCount} MOBS!`, 'border-emerald-400 text-emerald-300');
+    }
+
+    function registerMobKill(mob) {
+        if (mob.type === 'boss') {
+            hunt.bossDefeated = true;
+            document.getElementById('boss-bar-wrap').classList.add('hidden');
+        } else {
+            hunt.kills = Math.min(hunt.quota, hunt.kills + 1);
+            document.getElementById('hud-kills').textContent = hunt.kills;
+        }
+
+        // Update Combo Multiplier (up to 5x)
+        if (hunt.comboTimer > 0) {
+            hunt.combo = Math.min(5, hunt.combo + 1);
+        } else {
+            hunt.combo = 1;
+        }
+        hunt.comboTimer = 6.0;
+        if (hunt.combo > hunt.maxCombo) hunt.maxCombo = hunt.combo;
+
+        const gained = mob.points * hunt.combo;
+        hunt.score += gained;
+        document.getElementById('hud-combo').textContent = `${hunt.combo}x`;
+        document.getElementById('hud-score').textContent = hunt.score.toLocaleString();
+
+        // Spawn Dread Brute Boss once 70% of mob quota is cleared
+        if (!hunt.bossSpawned && hunt.kills >= Math.ceil(hunt.quota * 0.7)) {
+            spawnBoss();
+        }
+
+        if (hunt.kills >= hunt.quota && hunt.bossDefeated) {
+            endHunt(true, 'You hunted every mob and defeated the Dread Brute before sunset!');
+        }
+    }
+
+    function spawnBoss() {
+        if (hunt.bossSpawned) return;
+        hunt.bossSpawned = true;
+        const cfg = TIER_CONFIG[hunt.tier];
+        const bx = 0, bz = -15;
+        const by = getSurfaceY(bx, bz);
+        const boss = new VoxelMob('boss', new THREE.Vector3(bx, by, bz), cfg.dmgScale);
+        mobs.push(boss);
+
+        document.getElementById('boss-bar-wrap').classList.remove('hidden');
+        document.getElementById('boss-hp-text').textContent = `${boss.hp} / ${boss.maxHp}`;
+        document.getElementById('boss-hp-fill').style.width = '100%';
+        sfx.bossSpawn();
+        showToast('💀 DREAD BRUTE BOSS HAS AWAKENED AT THE NORTH RIDGE!', 'border-rose-500 text-rose-300');
+    }
+
+    function spawnAmbientMob() {
+        const cfg = TIER_CONFIG[hunt.tier];
+        if (mobs.length >= cfg.maxAlive) return;
+        if (hunt.kills + mobs.filter(m => m.type !== 'boss').length >= hunt.quota) return;
+
+        // Pick spawn spot at least 11 blocks away from player
+        const candidates = SPAWN_RING.filter(([sx, sz]) => Math.hypot(sx - player.pos.x, sz - player.pos.z) > 11);
+        const [sx, sz] = candidates[Math.floor(Math.random() * candidates.length)] || [15, -13];
+        const sy = getSurfaceY(sx, sz);
+
+        const roll = Math.random();
+        const type = roll < 0.45 ? 'zombie' : (roll < 0.75 ? 'creeper' : 'skeleton');
+        mobs.push(new VoxelMob(type, new THREE.Vector3(sx, sy, sz), cfg.dmgScale));
+    }
+
+    // ----------------------------------------------------------------------------
+    // 9. PLAYER PHYSICS, STRICT LEVEL CAMERA & COMBAT ACTIONS
+    // ----------------------------------------------------------------------------
+    const player = {
+        pos: new THREE.Vector3(0, 5.5, 4.5),
+        vel: new THREE.Vector3(0, 0, 0),
+        yaw: Math.PI,
+        pitch: -0.04,
+        onGround: false,
+        stepAccum: 0
+    };
+
+    const keys = {};
+    let quickHotbarCursor = false;
+
+    window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if (e.code === 'Digit1') selectHotbarSlot(1);
+        if (e.code === 'Digit2') selectHotbarSlot(2);
+        if (e.code === 'Digit3') selectHotbarSlot(3);
+        if (e.code === 'Digit4') selectHotbarSlot(4);
+        if (e.code === 'Digit5') selectHotbarSlot(5);
+        if (e.code === 'KeyF' && hunt.active && !hunt.paused) eatGoldenApple();
+        if (e.code === 'KeyQ' && hunt.active && !hunt.paused) triggerShockwaveTotem();
+        if (e.code === 'KeyE' && hunt.active && !hunt.paused) triggerDodgeDash();
+        if (e.code === 'Tab' && hunt.active && !hunt.over) {
+            e.preventDefault();
+            if (document.pointerLockElement === canvas) {
+                quickHotbarCursor = true;
+                document.exitPointerLock();
+            } else if (quickHotbarCursor) {
+                quickHotbarCursor = false;
+                canvas.requestPointerLock();
+            }
+        }
+    });
+    window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+    canvas.addEventListener('click', () => {
+        if (hunt.active && !hunt.over && document.pointerLockElement !== canvas) {
+            quickHotbarCursor = false;
+            canvas.requestPointerLock();
+        }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+        const locked = document.pointerLockElement === canvas;
+        if (!hunt.over) {
+            if (locked) {
+                quickHotbarCursor = false;
+                hunt.paused = false;
+                document.getElementById('crosshair-wrap').classList.remove('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                document.getElementById('menu-modal').classList.add('hidden');
+            } else if (quickHotbarCursor) {
+                // Keep HUD visible & game running so player can click hotbar slots directly!
+                hunt.paused = false;
+                hunt.blocking = false;
+                document.getElementById('crosshair-wrap').classList.add('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                document.getElementById('menu-modal').classList.add('hidden');
+                showToast('🖱️ CLICK ANY HOTBAR SLOT (OR PRESS TAB TO LOCK AIM)', 'border-sky-400 text-sky-300');
+            } else {
+                hunt.paused = true;
+                hunt.blocking = false;
+                document.getElementById('crosshair-wrap').classList.add('hidden');
+                document.getElementById('hud').classList.add('hidden');
+                document.getElementById('menu-modal').classList.remove('hidden');
+                if (hunt.active) {
+                    document.getElementById('btn-play').textContent = 'RESUME HUNT';
+                    document.getElementById('btn-restart').classList.remove('hidden');
+                }
+            }
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement !== canvas) return;
+        player.yaw -= e.movementX * 0.0022;
+        const maxPitch = Math.PI / 2 - 0.05;
+        player.pitch = Math.max(-maxPitch, Math.min(maxPitch, player.pitch - e.movementY * 0.0022));
+    });
+
+    window.addEventListener('mousedown', (e) => {
+        if (document.pointerLockElement !== canvas || !hunt.active || hunt.paused) return;
+        if (e.button === 0) {
+            handlePrimaryAction();
+        } else if (e.button === 2) {
+            if (hunt.slot === 3) {
+                placeOakPlankBlock();
+            } else {
+                hunt.blocking = true;
+            }
+        }
+    });
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 2) hunt.blocking = false;
+    });
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    function triggerDodgeDash() {
+        if (hunt.dashCooldown > 0 || hunt.stamina < 25) return;
+        hunt.dashCooldown = 1.1;
+        hunt.stamina = Math.max(0, hunt.stamina - 25);
+
+        const fwd = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+        const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+        const dashDir = new THREE.Vector3();
+        if (keys['KeyA'] || keys['ArrowLeft']) dashDir.sub(right);
+        else if (keys['KeyD'] || keys['ArrowRight']) dashDir.add(right);
+        else if (keys['KeyW'] || keys['ArrowUp']) dashDir.add(fwd);
+        else dashDir.sub(fwd);
+
+        dashDir.normalize().multiplyScalar(14);
+        player.vel.x = dashDir.x;
+        player.vel.z = dashDir.z;
+        camera.fov = 80;
+        camera.updateProjectionMatrix();
+        sfx.swordSwing();
+    }
+
+    function handlePrimaryAction() {
+        swingTimer = 0.22;
+
+        if (hunt.slot === 1) {
+            // Diamond Broadsword Melee Slash + Jump Critical Hit
+            sfx.swordSwing();
+            const lookDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ'));
+            const isCrit = !player.onGround && player.vel.y < -0.5;
+            let hitAny = false;
+
+            for (let i = mobs.length - 1; i >= 0; i--) {
+                const m = mobs[i];
+                const toMob = new THREE.Vector3(m.pos.x - player.pos.x, (m.pos.y + 1.0) - player.pos.y, m.pos.z - player.pos.z);
+                const d = toMob.length();
+                if (d <= 4.0 && lookDir.dot(toMob.normalize()) > 0.72) {
+                    const dmg = isCrit ? 12 : 8;
+                    m.takeDamage(dmg, player.pos, isCrit ? 9.5 : 7.0, isCrit);
+                    hitAny = true;
+                }
+            }
+
+            if (hitAny) {
+                if (isCrit) {
+                    sfx.critHit();
+                    showToast('⚡ CRITICAL HIT! (12 DMG)', 'border-amber-400 text-amber-300');
+                } else {
+                    sfx.hitFlesh();
+                }
+            }
+        } else if (hunt.slot === 2) {
+            // Hunter's Crossbow Bolt
+            if (hunt.crossbowCooldown > 0) return;
+            hunt.crossbowCooldown = 1.1;
+            const shootDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ'));
+            spawnProjectile(camera.position.clone().addScaledVector(shootDir, 0.6), shootDir, true);
+            sfx.bowShoot();
+        } else if (hunt.slot === 3) {
+            placeOakPlankBlock();
+        } else if (hunt.slot === 4) {
+            eatGoldenApple();
+        } else if (hunt.slot === 5) {
+            triggerShockwaveTotem();
+        }
+    }
+
+    // Crisp Black Wireframe Block Selection Outline
+    const selectionBox = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1.008, 1.008, 1.008)),
+        new THREE.LineBasicMaterial({ color: '#0f172a' })
+    );
+    scene.add(selectionBox);
+
+    function raycastBlock(maxDist = 5.0) {
+        const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ'));
+        const origin = camera.position.clone();
+        let px = Math.round(origin.x), py = Math.round(origin.y), pz = Math.round(origin.z);
+
+        for (let t = 0; t <= maxDist; t += 0.06) {
+            const p = origin.clone().addScaledVector(dir, t);
+            const bx = Math.round(p.x), by = Math.round(p.y), bz = Math.round(p.z);
+            const id = getVoxel(bx, by, bz);
+            if (id !== 0) return { hit: { x: bx, y: by, z: bz, id }, place: { x: px, y: py, z: pz } };
+            px = bx; py = by; pz = bz;
+        }
+        return null;
+    }
+
+    function placeOakPlankBlock() {
+        if (hunt.planks <= 0) {
+            showToast('Out of Oak Planks!', 'border-rose-400 text-rose-300');
+            return;
+        }
+        const aim = raycastBlock();
+        if (!aim) return;
+        const { x, y, z } = aim.place;
+        const px = Math.round(player.pos.x), pz = Math.round(player.pos.z);
+        if (x === px && z === pz && (y === Math.round(player.pos.y - 1.2) || y === Math.round(player.pos.y))) return;
+
+        setVoxel(x, y, z, 9);
+        hunt.planks--;
+        refreshHotbarCounts();
+        rebuildChunks();
+        sfx.blockPlace();
+    }
+
+    function playerCollides(pos) {
+        const r = 0.28;
+        for (let x = Math.round(pos.x - r); x <= Math.round(pos.x + r); x++) {
+            for (let y = Math.round(pos.y - 1.48); y <= Math.round(pos.y + 0.18); y++) {
+                for (let z = Math.round(pos.z - r); z <= Math.round(pos.z + r); z++) {
+                    if (getVoxel(x, y, z) !== 0) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // ----------------------------------------------------------------------------
+    // 10. HOSTILE MOB RADAR COMPASS
+    // ----------------------------------------------------------------------------
+    function updateMobRadar() {
+        const bar = document.getElementById('compass-bar');
+        bar.innerHTML = '<div class="w-0.5 h-full bg-white/30"></div>';
+        const w = bar.clientWidth || 340;
+
+        mobs.forEach((m) => {
+            const ang = Math.atan2(-(m.pos.x - player.pos.x), -(m.pos.z - player.pos.z));
+            let diff = ang - player.yaw;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+
+            const clamp = Math.max(-Math.PI * 0.65, Math.min(Math.PI * 0.65, diff));
+            const px = Math.round((0.5 - (clamp / (Math.PI * 0.65)) * 0.45) * w);
+
+            const pip = document.createElement('div');
+            if (m.type === 'boss') {
+                pip.className = 'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 px-1.5 bg-rose-600 text-white text-[10px] font-black animate-pulse';
+                pip.textContent = '💀 BOSS';
+            } else {
+                pip.className = 'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-rose-500 border border-white';
+            }
+            pip.style.left = `${px}px`;
+            bar.appendChild(pip);
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 11. HUNT LIFECYCLE & MAIN LOOP
+    // ----------------------------------------------------------------------------
+    function clearEntities() {
+        while (mobGroup.children.length > 0) mobGroup.remove(mobGroup.children[0]);
+        mobs.length = 0;
+        while (xpGroup.children.length > 0) xpGroup.remove(xpGroup.children[0]);
+        xpOrbs.length = 0;
+        while (projGroup.children.length > 0) projGroup.remove(projGroup.children[0]);
+        projectiles.length = 0;
+        while (particleGroup.children.length > 0) particleGroup.remove(particleGroup.children[0]);
+        particles.length = 0;
+    }
+
+    function startMobHunt() {
+        sfx.unlock();
+        buildHuntArena();
+        rebuildChunks();
+        clearEntities();
+
+        const cfg = TIER_CONFIG[hunt.tier];
+        hunt.active = true;
+        hunt.paused = false;
+        hunt.over = false;
+        hunt.timeLeft = DAY_DURATION;
+        hunt.kills = 0;
+        hunt.quota = cfg.quota;
+        hunt.bossSpawned = false;
+        hunt.bossDefeated = false;
+        hunt.score = 0;
+        hunt.xp = 0;
+        hunt.xpLevel = 1;
+        hunt.combo = 1;
+        hunt.maxCombo = 1;
+        hunt.comboTimer = 0;
+        hunt.hp = 20;
+        hunt.stamina = 100;
+        hunt.planks = 12;
+        hunt.apples = 2;
+        hunt.crossbowCooldown = 0;
+        hunt.totemCooldown = 0;
+        hunt.dashCooldown = 0;
+        hunt.blocking = false;
+        hunt.spawnTimer = 0;
+        quickHotbarCursor = false;
+
+        player.pos.set(0, 5.5, 4.5);
+        player.vel.set(0, 0, 0);
+        player.yaw = Math.PI;
+        player.pitch = -0.04;
+
+        selectHotbarSlot(1);
+        updateHeartsHUD();
+        updateXPBar();
+        refreshHotbarCounts();
+        document.getElementById('world-popups').innerHTML = '';
+
+        document.getElementById('hud-tier-badge').textContent = cfg.label;
+        document.getElementById('hud-kills').textContent = '0';
+        document.getElementById('hud-quota').textContent = cfg.quota;
+        document.getElementById('hud-combo').textContent = '1x';
+        document.getElementById('hud-score').textContent = '0';
+        document.getElementById('hud-best').textContent = `Best Score: ${hunt.bestScore.toLocaleString()}`;
+        document.getElementById('boss-bar-wrap').classList.add('hidden');
+        document.getElementById('end-modal').classList.add('hidden');
+        document.getElementById('menu-modal').classList.add('hidden');
+
+        // Spawn initial wave of 4 mobs
+        for (let i = 0; i < 4; i++) spawnAmbientMob();
+
+        canvas.requestPointerLock();
+    }
+
+    function endHunt(victory, reason) {
+        hunt.over = true;
+        hunt.active = false;
+        hunt.blocking = false;
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+
+        document.getElementById('crosshair-wrap').classList.add('hidden');
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('end-modal').classList.remove('hidden');
+
+        const elapsed = Math.max(1, Math.round(DAY_DURATION - hunt.timeLeft));
+        const timeBonus = victory ? Math.round(hunt.timeLeft * 10) : 0;
+        const finalScore = hunt.score + timeBonus;
+
+        if (finalScore > hunt.bestScore) {
+            hunt.bestScore = finalScore;
+            localStorage.setItem('ac_hunt_best_score', String(hunt.bestScore));
+        }
+
+        sfx.fanfare(victory);
+        document.getElementById('end-badge').textContent = victory ? '🏆 ISLAND DEFENDED' : '💀 SUNSET OVERRUN';
+        document.getElementById('end-title').textContent = victory ? 'Victory!' : 'Hunt Failed';
+        document.getElementById('end-desc').textContent = reason;
+        document.getElementById('end-score').textContent = finalScore.toLocaleString();
+        document.getElementById('end-combo').textContent = `${hunt.maxCombo}x`;
+        document.getElementById('end-time').textContent = fmtTime(elapsed);
+    }
+
+    document.getElementById('btn-play').addEventListener('click', () => {
+        if (!hunt.active) startMobHunt();
+        else { sfx.unlock(); canvas.requestPointerLock(); }
+    });
+    document.getElementById('btn-restart').addEventListener('click', startMobHunt);
+    document.getElementById('btn-play-again').addEventListener('click', startMobHunt);
+
+    let prevNow = performance.now();
+
+    function gameLoop(now) {
+        requestAnimationFrame(gameLoop);
+        syncViewport();
+
+        const dt = Math.min(0.05, (now - prevNow) / 1000);
+        prevNow = now;
+
+        // Drift clouds & water
+        cloudGroup.children.forEach((c) => {
+            c.position.x += dt * 0.7;
+            if (c.position.x > 62) c.position.x = -62;
+        });
+        waterTex.offset.x += dt * 0.04;
+        waterTex.offset.y += dt * 0.03;
+
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.life -= dt;
+            p.vel.y -= 14 * dt;
+            p.mesh.position.addScaledVector(p.vel, dt);
+            if (p.life <= 0) {
+                particleGroup.remove(p.mesh);
+                particles.splice(i, 1);
+            }
+        }
+
+        if (hunt.active && !hunt.paused && !hunt.over) {
+            hunt.timeLeft -= dt;
+            const progress = 1 - Math.max(0, hunt.timeLeft / DAY_DURATION);
+            updateDaylightCycle(progress);
+
+            document.getElementById('hud-timer').textContent = fmtTime(hunt.timeLeft);
+            const phaseEl = document.getElementById('hud-day-phase');
+            if (hunt.timeLeft <= 30) {
+                phaseEl.textContent = '🚨 NIGHTFALL ALERT';
+                phaseEl.className = 'text-[10px] uppercase tracking-wider text-rose-400 font-black animate-pulse';
+                if (!hunt.bossSpawned) spawnBoss();
+            } else if (progress > 0.7) {
+                phaseEl.textContent = '🌅 Crimson Sunset';
+                phaseEl.className = 'text-[10px] uppercase tracking-wider text-orange-400 font-extrabold';
+            } else {
+                phaseEl.textContent = '☀️ High Noon';
+                phaseEl.className = 'text-[10px] uppercase tracking-wider text-amber-300 font-extrabold';
+            }
+
+            if (hunt.timeLeft <= 0) {
+                endHunt(false, 'The sun set before you finished clearing the island!');
+                return;
+            }
+
+            // Cooldowns & Combo decay
+            if (hunt.comboTimer > 0) {
+                hunt.comboTimer -= dt;
+                if (hunt.comboTimer <= 0 && hunt.combo > 1) {
+                    hunt.combo = 1;
+                    document.getElementById('hud-combo').textContent = '1x';
+                }
+            }
+            if (hunt.crossbowCooldown > 0) {
+                hunt.crossbowCooldown = Math.max(0, hunt.crossbowCooldown - dt);
+                const pct = Math.round(((1.1 - hunt.crossbowCooldown) / 1.1) * 100);
+                document.getElementById('reload-bar-fill').style.width = `${pct}%`;
+            }
+            if (hunt.totemCooldown > 0) {
+                hunt.totemCooldown = Math.max(0, hunt.totemCooldown - dt);
+                document.getElementById('cd-totem').textContent = hunt.totemCooldown > 0 ? `${Math.ceil(hunt.totemCooldown)}s` : 'RDY';
+            }
+            if (hunt.dashCooldown > 0) hunt.dashCooldown = Math.max(0, hunt.dashCooldown - dt);
+
+            // Spawn wave mobs periodically
+            hunt.spawnTimer -= dt;
+            if (hunt.spawnTimer <= 0) {
+                hunt.spawnTimer = 3.2;
+                spawnAmbientMob();
+            }
+
+            // Player Movement & Sprint Stamina
+            const fwd = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+            const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+            const wish = new THREE.Vector3();
+            if (keys['KeyW'] || keys['ArrowUp']) wish.add(fwd);
+            if (keys['KeyS'] || keys['ArrowDown']) wish.sub(fwd);
+            if (keys['KeyD'] || keys['ArrowRight']) wish.add(right);
+            if (keys['KeyA'] || keys['ArrowLeft']) wish.sub(right);
+            if (wish.lengthSq() > 0) wish.normalize();
+
+            const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && wish.lengthSq() > 0 && hunt.stamina > 2 && !hunt.blocking;
+            if (sprinting) hunt.stamina = Math.max(0, hunt.stamina - 22 * dt);
+            else hunt.stamina = Math.min(100, hunt.stamina + 18 * dt);
+
+            const drumsticks = Math.max(1, Math.ceil(hunt.stamina / 20));
+            document.getElementById('hud-stamina-icons').textContent = '🍗'.repeat(drumsticks);
+
+            // Smooth FOV recovery after dodge dash
+            if (camera.fov > 74.1) {
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 74, 10 * dt);
+                camera.updateProjectionMatrix();
+            }
+
+            const targetSpeed = hunt.blocking ? 2.8 : (sprinting ? 7.6 : 5.4);
+            player.vel.x = THREE.MathUtils.lerp(player.vel.x, wish.x * targetSpeed, 14 * dt);
+            player.vel.z = THREE.MathUtils.lerp(player.vel.z, wish.z * targetSpeed, 14 * dt);
+            player.vel.y -= 23 * dt;
+
+            if (keys['Space'] && player.onGround) {
+                player.vel.y = 8.4;
+                player.onGround = false;
+                sfx.jump();
+            }
+
+            const tx = player.pos.clone(); tx.x += player.vel.x * dt;
+            if (!playerCollides(tx)) player.pos.x = tx.x;
+
+            const tz = player.pos.clone(); tz.z += player.vel.z * dt;
+            if (!playerCollides(tz)) player.pos.z = tz.z;
+
+            const ty = player.pos.clone(); ty.y += player.vel.y * dt;
+            if (!playerCollides(ty)) {
+                player.pos.y = ty.y;
+                player.onGround = false;
+            } else {
+                if (player.vel.y < 0) player.onGround = true;
+                player.vel.y = 0;
+            }
+
+            if (player.pos.y < 0.2) {
+                player.pos.set(0, 5.5, 4.5);
+                player.vel.set(0, 0, 0);
+            }
+
+            if (player.onGround && wish.lengthSq() > 0.1) {
+                player.stepAccum += dt * (sprinting ? 1.35 : 1.0);
+                walkBob += dt * (sprinting ? 13 : 9);
+                if (player.stepAccum > 0.35) {
+                    player.stepAccum = 0;
+                    const below = getVoxel(Math.round(player.pos.x), Math.round(player.pos.y - 1.6), Math.round(player.pos.z));
+                    sfx.step(below === 3 || below === 4 || below === 5);
+                }
+            } else {
+                walkBob = 0;
+            }
+
+            // Strictly Level Camera Orientation (YXZ order, Z roll locked to 0)
+            camera.position.copy(player.pos);
+            camera.up.set(0, 1, 0);
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = player.yaw;
+            camera.rotation.x = player.pitch;
+            camera.rotation.z = 0;
+
+            // Animate First-Person Weapons & Offhand Shield
+            if (swingTimer > 0) swingTimer = Math.max(0, swingTimer - dt);
+            const swingAngle = swingTimer > 0 ? Math.sin((swingTimer / 0.22) * Math.PI) * 1.25 : 0;
+            rightHandGroup.position.set(Math.sin(walkBob) * 0.018, -Math.abs(Math.cos(walkBob)) * 0.018, 0);
+            rightHandGroup.rotation.set(-swingAngle * 0.85, swingAngle * 0.25, swingAngle * 0.45);
+
+            // Raise shield into center-left view when blocking
+            const targetShieldPos = hunt.blocking ? new THREE.Vector3(-0.22, -0.18, -0.38) : new THREE.Vector3(-0.44, -0.34, -0.44);
+            const targetShieldRot = hunt.blocking ? new THREE.Euler(0.05, 0.05, 0) : new THREE.Euler(0.1, 0.35, -0.08);
+            shieldGroup.position.lerp(targetShieldPos, 18 * dt);
+            shieldGroup.rotation.x = THREE.MathUtils.lerp(shieldGroup.rotation.x, targetShieldRot.x, 18 * dt);
+            shieldGroup.rotation.y = THREE.MathUtils.lerp(shieldGroup.rotation.y, targetShieldRot.y, 18 * dt);
+            shieldGroup.rotation.z = THREE.MathUtils.lerp(shieldGroup.rotation.z, targetShieldRot.z, 18 * dt);
+
+            // Block targeting outline when holding planks
+            const aim = hunt.slot === 3 ? raycastBlock() : null;
+            if (aim) {
+                selectionBox.visible = true;
+                selectionBox.position.set(aim.hit.x, aim.hit.y, aim.hit.z);
+            } else {
+                selectionBox.visible = false;
+            }
+
+            // Update Projectiles (Player Crossbow Bolts & Skeleton Arrows)
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const pr = projectiles[i];
+                pr.life -= dt;
+                pr.vel.y -= (pr.fromPlayer ? 3.5 : 4.5) * dt;
+                pr.mesh.position.addScaledVector(pr.vel, dt);
+
+                let hit = false;
+                const bx = Math.round(pr.mesh.position.x), by = Math.round(pr.mesh.position.y), bz = Math.round(pr.mesh.position.z);
+                if (getVoxel(bx, by, bz) !== 0) hit = true;
+
+                if (!hit && pr.fromPlayer) {
+                    for (let j = mobs.length - 1; j >= 0; j--) {
+                        const m = mobs[j];
+                        const mobCenter = m.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
+                        if (pr.mesh.position.distanceTo(mobCenter) < (m.type === 'boss' ? 1.3 : 0.85)) {
+                            const isHeadshot = pr.mesh.position.y > m.pos.y + 1.35;
+                            m.takeDamage(isHeadshot ? 16 : 11, player.pos, 6.0, isHeadshot);
+                            if (isHeadshot) {
+                                sfx.critHit();
+                                showToast('🎯 CROSSBOW HEADSHOT! (16 DMG)', 'border-cyan-400 text-cyan-300');
+                            } else {
+                                sfx.hitFlesh();
+                            }
+                            hit = true;
+                            break;
+                        }
+                    }
+                } else if (!hit && !pr.fromPlayer) {
+                    if (pr.mesh.position.distanceTo(player.pos.clone().add(new THREE.Vector3(0, -0.4, 0))) < 0.85) {
+                        damagePlayer(Math.max(1, Math.round(2 * TIER_CONFIG[hunt.tier].dmgScale)), 'Skeleton Arrow');
+                        hit = true;
+                    }
+                }
+
+                if (hit || pr.life <= 0) {
+                    projGroup.remove(pr.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // Magnetize & Collect Green XP Orbs
+            for (let i = xpOrbs.length - 1; i >= 0; i--) {
+                const orb = xpOrbs[i];
+                orb.mesh.rotation.y += dt * 3;
+                const toP = player.pos.clone().sub(orb.mesh.position);
+                const d = toP.length();
+                if (d < 6.0) {
+                    orb.mesh.position.addScaledVector(toP.normalize(), 11 * dt);
+                }
+                if (d < 1.2) {
+                    hunt.score += orb.value * hunt.combo;
+                    hunt.xp += orb.value;
+                    const needed = hunt.xpLevel * 100;
+                    if (hunt.xp >= needed) {
+                        hunt.xp -= needed;
+                        hunt.xpLevel++;
+                        hunt.hp = Math.min(20, hunt.hp + 2);
+                        updateHeartsHUD();
+                        sfx.levelUp();
+                        showToast(`✨ LEVEL UP! REACHED LVL ${hunt.xpLevel} (+1 HEART)`, 'border-lime-400 text-lime-300');
+                    } else {
+                        sfx.xpPickup();
+                    }
+                    updateXPBar();
+                    document.getElementById('hud-score').textContent = hunt.score.toLocaleString();
+                    xpGroup.remove(orb.mesh);
+                    xpOrbs.splice(i, 1);
+                }
+            }
+
+            // Update Mobs & Radar
+            for (let i = mobs.length - 1; i >= 0; i--) {
+                mobs[i].update(dt, player.pos);
+            }
+            updateMobRadar();
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // Render scenic preview behind title screen
+    buildHuntArena();
+    rebuildChunks();
+    updateDaylightCycle(0.15);
+    camera.position.set(18, 13, 21);
+    camera.lookAt(0, 4, -2);
+    camera.rotation.z = 0;
+    requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
