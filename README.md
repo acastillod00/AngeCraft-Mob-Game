@@ -1,7 +1,7 @@
 # AngeCraft: Mob Hunt
 
 **Author:** Angelica
-**Playable Link:** https://github.com/acastillod00/AngeCraft-Mob-Game/blob/main/angecraft_mob_hunt_3d_voxel_survival_action%20(1).html
+**Playable Link:** https://acastillod00.github.io/AngeCraft-Mob-Game/
 
 ## Goal
 Survive until the 2:30 sunset timer ends by hunting down hostile mobs (Zombies, Creepers, Skeleton Archers, and the Dread Brute Boss) in the voxel village arena.
